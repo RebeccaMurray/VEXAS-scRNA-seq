@@ -9,7 +9,7 @@ library(gridExtra)
 library(parallel)
 library(DoubletFinder)
 library(dsb)
-set.seed(3)
+set.seed(1)
 
 ## Load all the samples
 cellranger.output.dir <- "/gpfs/commons/home/rmurray/rscripts/VEXAS_RNA_seurat/data/soupx_output/"
@@ -144,7 +144,7 @@ for(sample in sample.list) {
 print("Normalizing w/ regression of percent.mito, S.Score, G2M.Score")
 sample.list <- mclapply(X = sample.list, FUN = function(x) {
   DefaultAssay(x) <- "RNA"
-  x <- SCTransform(x, vst.flavor = "v2", method = "glmGamPoi", verbose = TRUE, seed.use = 3)
+  x <- SCTransform(x, vst.flavor = "v2", vars.to.regress = c("percent.mito", "S.Score", "G2M.Score"), method = "glmGamPoi", verbose = TRUE, seed.use = 1)
   DefaultAssay(x) <- "SCT"
   return(x)
 }, mc.cores = detectCores())
@@ -153,7 +153,7 @@ print("Selecting integration features...")
 
 integration.features <- SelectIntegrationFeatures(object.list = sample.list, nfeatures = 3000)
 sample.list <- PrepSCTIntegration(object.list = sample.list, anchor.features = integration.features)
-sample.list <- mclapply(X = sample.list, mc.cores = detectCores(), FUN = RunPCA, features = integration.features, seed.use = 3) ## Necessary to use rPCA
+sample.list <- mclapply(X = sample.list, mc.cores = detectCores(), FUN = RunPCA, features = integration.features, seed.use = 1) ## Necessary to use rPCA
 
 integration.anchors <- FindIntegrationAnchors(object.list = sample.list, 
                                               k.anchor = 2, 
@@ -169,9 +169,9 @@ print("Integration complete! Starting downstream analysis...")
 
 ## Continue with downstream analysis
 DefaultAssay(samples.vexas.integrated) <- "integrated"
-samples.vexas.integrated <- RunPCA(samples.vexas.integrated, verbose = FALSE, seed.use = 3, npcs = 70)
+samples.vexas.integrated <- RunPCA(samples.vexas.integrated, verbose = FALSE, seed.use = 1, npcs = 70)
 ElbowPlot(samples.vexas.integrated, ndims = 70)
-samples.vexas.integrated <- RunUMAP(samples.vexas.integrated, reduction = "pca", dims = 1:50, seed.use = 3, return.model = TRUE)
+samples.vexas.integrated <- RunUMAP(samples.vexas.integrated, reduction = "pca", dims = 1:50, seed.use = 1, return.model = TRUE)
 samples.vexas.integrated <- FindNeighbors(samples.vexas.integrated, reduction = "pca", dims = 1:50)
 samples.vexas.integrated <- FindClusters(samples.vexas.integrated, resolution = 1)
 
@@ -426,7 +426,7 @@ samples.vexas.integrated$log10_splicing_ratio <- log10(samples.vexas.integrated$
 ######################################## Save ##############################################
 
 print("Done! Saving...")
-saveRDS(samples.vexas.integrated, file = "data/seurat_objects/vexas_nothing_regressed_RNA_data_20231104.rds")
+saveRDS(samples.vexas.integrated, file = "data/seurat_objects/vexas_final_RNA_data.rds")
 print("Object is saved")
 
 
