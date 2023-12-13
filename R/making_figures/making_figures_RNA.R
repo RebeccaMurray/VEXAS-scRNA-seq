@@ -26,6 +26,11 @@ vexas_pseudotime = readRDS('/gpfs/commons/home/tbotella/VEXAS/PAPER/Dec_2023/pse
 rna.obj <- AddMetaData(rna.obj, vexas_pseudotime@meta.data %>% select(monocle3_pseudotime))
 rm(vexas_pseudotime)
 
+## Set an order for the cluster annotations
+celltype.order <- c("HSC", "LMPP", "EMP", "Early Eryth", "Late Eryth", "MkP", "BaEoMa", "CLP", "GMP", "cDC", "CD14 Mono", "B", "pDC", "CD4 T", "CD8 T", "NK", "Plasma")
+rna.obj$CellType <- factor(rna.obj$cluster_celltype, levels = celltype.order)
+table(rna.obj$CellType, useNA = "always")
+
 ## Get metadata plot with coordinates
 md <- rna.obj[[]]
 coords <- Embeddings(rna.obj[["umap"]])
@@ -64,23 +69,19 @@ p.sample.origin
 ggsave(paste0(current.plots.path, "/UMAP_RNA_Donor.pdf"), plot = p.sample.origin, device = "pdf", dpi = 300, width = 7, height = 5, unit = "in")
 ggsave(paste0(current.plots.path, "/UMAP_RNA_Donor_no_legend.pdf"), plot = p.sample.origin + theme(legend.position = "none"), device = "pdf", dpi = 300, width = 7, height = 7, unit = "in")
 
-## Sample of origin - split into separate panes
-p.sample.origin.split <- DimPlot(rna.obj, split.by = "Donor", group.by = "Donor", ncol = 5, pt.size = 0.1) + NoLegend() + 
-  coord_fixed() +
-  ggtitle(element_blank())
-p.sample.origin.split
-ggsave(paste0(current.plots.path, "/UMAP_RNA_donor_split.pdf"), plot = p.sample.origin.split, device = "pdf", dpi = 300, width = 10, height = 4, unit = "in")
 
-# ## VEXAS vs. control
-# p.sample.origin <- ggplot(md, aes(x = UMAP1, y = UMAP2, color = Object )) +
-#   geom_point(size = 0.1) + theme_classic() + coord_fixed() +
-#   guides(x = axis, y = axis) +
-#   scale_x_continuous(breaks = NULL) +
-#   scale_y_continuous(breaks = NULL) +
-#   theme(axis.line = element_line(arrow = arrow()), axis.title = element_text(hjust = 0)) +
-#   scale_color_manual(values = c("#440154FF", "#21908CFF"))
-# p.sample.origin
-# ggsave(paste0(current.plots.path, "/UMAP_RNA_VEXAS_vs_control.pdf"), plot = p.sample.origin, device = "pdf", dpi = 300, width = 7, height = 5, unit = "in")
+## VEXAS vs. control
+p.vexas.vs.control <- ggplot(md[sample(1:nrow(md)), ], aes(x = UMAP_1, y = UMAP_2, fill = Object)) +
+  geom_point(pch = 21, size = 1, stroke = 0.1, color = "black") + ## size controls width of point, stroke controls width of border, color is border color
+  scale_fill_manual(values = c(VEXAS = "#2A9098", CONTROL = "#F5B935")) +
+  theme_classic() + coord_fixed() +
+  theme(legend.position = "none", legend.title = element_blank(), legend.text = element_text(size = 12)) +
+  guides(x = axis, y = axis) +
+  scale_x_continuous(breaks = NULL) +
+  scale_y_continuous(breaks = NULL) +
+  theme(axis.line = element_line(arrow = arrow()), axis.title = element_text(hjust = 0))  + coord_fixed()
+p.vexas.vs.control
+ggsave(paste0(current.plots.path, "/UMAP_RNA_vexas_vs_control.pdf"), plot = p.vexas.vs.control, device = "pdf", dpi = 300, width = 7, height = 7, unit = "in")
 
 ## Bar plot of cell type proportions per donor
 donor.order <- md %>% 
@@ -121,6 +122,25 @@ p.azimuth <- DimPlot(rna.obj, group.by = "predicted.celltype.l2.plot", label = T
   scale_y_continuous(breaks = NULL) +
   theme(axis.line = element_line(arrow = arrow()), axis.title = element_text(hjust = 0)) 
 ggsave(paste0(current.plots.path, "/UMAP_RNA_azimuth_no_legend.pdf"), plot = p.azimuth + theme(legend.position = "none"), device = "pdf", dpi = 300, width = 7, height = 7, unit = "in")
+
+## Plot the azimuth label/predicted celltype label overlap
+predicted.celltype.l2.order <- c("HSC" ,  "LMPP"   ,   "EMP" , "Early Eryth", "Late Eryth",  "MkP", "BaEoMa",   "CLP", "GMP", "pre-mDC", "cDC", "CD14 Mono", "B", "pre-pDC", "pDC" , "CD4 T", "CD8 T", "NK", "Plasma", "CD16 Mono", "Macrophage", "ASDC", "MAIT", "NK CD56+", "Stromal")
+p.azimuth.comparison <- md %>% 
+  filter(!is.na(predicted.celltype.l2)) %>% ## Excludes 12 cells
+  mutate(predicted.celltype.l2 = gsub(".*CD8.*", "CD8 T", predicted.celltype.l2)) %>%
+  mutate(predicted.celltype.l2 = gsub(".*CD4.*", "CD4 T", predicted.celltype.l2)) %>%
+  mutate(predicted.celltype.l2 = gsub(".* B", "B", predicted.celltype.l2)) %>% 
+  mutate(predicted.celltype.l2 = gsub("Memory ", "", predicted.celltype.l2)) %>%
+  mutate(predicted.celltype.l2 = gsub("Prog Mk", "MkP", predicted.celltype.l2)) %>%
+  mutate(predicted.celltype.l2 = gsub("cDC.*", "cDC", predicted.celltype.l2)) %>%
+  group_by(CellType) %>% 
+  count(predicted.celltype.l2) %>% 
+  mutate(percent = (n / sum(n))*100) %>% select(-n) %>% 
+  pivot_wider(names_from = CellType, values_from = percent, values_fill = 0) %>% 
+  column_to_rownames("predicted.celltype.l2")
+pdf("figures/current_figure_drafts/RNA_cell_type_labels_heatmap.pdf", width = 5, height = 5)
+pheatmap::pheatmap(p.azimuth.comparison[predicted.celltype.l2.order, ], cluster_rows = F, cluster_cols = F, main = "Assigned cell type labels", color = inferno(50))
+dev.off()
 
 ## Cell type labels, no labels
 p.celltypes <- ggplot(md, aes(x = UMAP1, y = UMAP2, fill = CellType, label = CellType)) +
@@ -253,6 +273,31 @@ ggsave("figures/current_figure_drafts/UMAP_RNA_genotyping.tiff", plot = p.genoty
 
 
 ## Genotyping UMAP, split by patient
+per.patient.plots <- lapply(levels(rna.obj$Donor), function(x) {
+  print(x)
+  md.mut.donor <- md.mut %>% filter(Donor == x)
+  md.wt.donor <- md.wt %>% filter(Donor == x)
+  fraction.gentotyped <- md %>% filter(Donor == x) %>% filter(Genotype %in% c("MUT", "WT")) %>% nrow() /  md %>% filter(Donor == x) %>% nrow()
+  percent.genotyped <- round(fraction.gentotyped, digits = 4) *100
+  p.donor.genotyped <- ggplot(md.na, aes(x = UMAP1, y = UMAP2, color = Genotype)) +
+    geom_point(shape = 19, size = 1.5, color = "black") + 
+    geom_point(shape = 19, size = 1, color = "grey80")+
+    geom_point(data = md.mut.donor, shape = 19, size = 0.5, color = vexas.genotyping.palette[["MUT"]]  ) +
+    geom_point(data = md.wt.donor, shape = 19, size = 0.5, color = vexas.genotyping.palette[["WT"]]) +
+    scale_color_manual(values = unlist(vexas.genotyping.palette)) +
+    theme_classic() + coord_fixed() +
+    theme(legend.position = c(1, 0.9), legend.title = element_blank(), legend.text = element_text(size = 12)) +
+    guides(x = axis, y = axis) +
+    scale_x_continuous(breaks = NULL) +
+    scale_y_continuous(breaks = NULL) +
+    ggtitle(x, subtitle = paste0("Cells genotyped = ", percent.genotyped, "%")) +
+    theme(axis.line = element_line(arrow = arrow()), axis.title = element_text(hjust = 0), plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5)) + coord_fixed() 
+  return(p.donor.genotyped)
+}) 
+p.combined <- wrap_plots(per.patient.plots, nrow = 2)
+ggsave("figures/current_figure_drafts/RNA_UMAP_genotyping_split.tiff", plot = p.combined, device = "tiff", dpi = 300, width = 12, height = 5.5)
+
+
 p.genotyping.split <- ggplot(md.na, aes(x = UMAP1, y = UMAP2, color = Genotype)) +
   geom_point(shape = 19, size = 0.05, color = "grey80") + 
   geom_point(data = md.mut, shape = 19, size = 0.1, color = vexas.genotyping.palette[["MUT"]]  ) +
@@ -892,30 +937,6 @@ p.volcano
 ggsave(paste0(current.plots.path, "/RNA_HSC_diff_exp_no_labels_20231205.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 6.5, height = 5)
 
 
-## Plot volcano with labels
-p.volcano <- plot_volcano(de.results, metadata.df = rna.obj@meta.data %>% filter(CellType == "HSC") %>% filter(Genotype %in% c("MUT", "WT")), effect_cutoff = 0.2, effect_line = 0.2, stat_column = "fdr", title = paste0("HSCs"), 
-             genotyping_column = "Genotype", 
-             only_genes = volcano.gene.list, only_genes_colors = volcano.gene.list.colors) + 
-  theme(legend.position = "right") +
-  ylab("-log10(FDR)") +
-  xlab("Average log2(FC)") +
-  coord_cartesian(ylim=c(0, 35), xlim = c(-1.5, 1.5))
-p.volcano
-ggsave(paste0(current.plots.path, "/RNA_HSC_diff_exp_higher_ylim.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 6.5, height = 5)
-
-## Plot volcano without labels
-p.volcano <- de.results %>% 
-  plot_volcano(., metadata.df = rna.obj@meta.data %>% filter(CellType == "HSC") %>% filter(Genotype %in% c("MUT", "WT")), effect_cutoff = 0.2, effect_line = 0.2, stat_column = "fdr", title = paste0("HSCs"), 
-                          genotyping_column = "Genotype", 
-                          label_genes = F,
-                          only_genes = volcano.gene.list, only_genes_colors = volcano.gene.list.colors) + 
-  theme(legend.position = "right") +
-  coord_cartesian(ylim=c(0, 35), xlim = c(-1.5, 1.5))
-p.volcano
-ggsave(paste0(current.plots.path, "/RNA_HSC_diff_exp_no_gene_annotations_higher_ylim.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 7.5, height = 5.5)
-
-
-
 ## Enrichment plots
 p1 <- plot_enrichment(de.results, pathway = "ATF4_ONLY_HAN") + theme_classic()
 p2 <- plot_enrichment(de.results, pathway = "HALLMARK_GLYCOLYSIS") + theme_classic()
@@ -1051,31 +1072,25 @@ uba1.exp.celltype.order <- md.merged %>%
   group_by(CellType, Donor) %>% 
   summarize(fraction_genotyped = sum(Genotype != "NA") / n()) %>% 
   group_by(CellType) %>% 
-  summarize(median_frac_genotyped = median(fraction_genotyped)) %>% 
-  arrange(-median_frac_genotyped) %>% 
+  summarize(mean_frac_genotyped = mean(fraction_genotyped)) %>% 
+  arrange(-mean_frac_genotyped) %>% 
   pull(CellType)
 
-# ## Plot the UBA1 expression per cluster (violins)
-# p.uba1.exp <- md.merged %>% 
-#   mutate(CellType = factor(CellType, levels = uba1.exp.celltype.order)) %>% 
-#   ggplot(aes(x = CellType, y = UBA1_UMI_count, fill = CellType)) + 
-#   geom_violin() +
-#   ylab("Average UBA1 UMI count, per patient") +
-#   scale_fill_manual(values = cell.type.palette) +
-#   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position = "None")
-
-## Fraction of cells genotyped
+## Percent of cells genotyped
 p.genotyping.rate <- md.merged %>% 
   group_by(CellType, Donor) %>% 
   mutate(CellType = factor(CellType, levels = uba1.exp.celltype.order)) %>% 
   summarize(fraction_genotyped = sum(Genotype != "NA") / n(), mut_count = sum(Genotype == "MUT"), wt_count = sum(Genotype == "WT"), total = n()) %>% 
   group_by(CellType) %>% 
-  ggplot(aes(x = CellType, y = fraction_genotyped, fill = CellType)) + 
-  geom_boxplot() +
+  summarize(mean_val = mean(fraction_genotyped), sd_val = sd(fraction_genotyped), n = n(), se_val = sd_val / sqrt(n)) %>% 
+  ggplot(aes(x = CellType, y = mean_val, fill = CellType)) + 
+  geom_col(color = "black") +
+  geom_errorbar(aes(x = CellType, ymin = mean_val-se_val, ymax = mean_val+se_val), width=0.4, size = 0.25) +
   scale_fill_manual(values = cell.type.palette) +
   scale_y_continuous(labels = scales::percent) +
-  ylab("Percent of cells genotyped") +
+  ylab("Percent of\ncells genotyped") +
   theme(axis.text.x = element_blank(), axis.title.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "None")
+p.genotyping.rate
 
 ## Plot the UBA1 expression per cluster (summarized by patient)
 p.uba1.exp <- md.merged %>% 
@@ -1084,9 +1099,10 @@ p.uba1.exp <- md.merged %>%
   group_by(CellType) %>% 
   mutate(CellType = factor(CellType, levels = uba1.exp.celltype.order)) %>% 
   ggplot(aes(x = CellType, y = mean_uba1_umi_count, fill = CellType)) + 
-  geom_violin(scale = "width") +
-  geom_point(position = "jitter") +
-  ylab("Average UBA1 UMIs per cell") +
+  # geom_violin(scale = "width") +
+  # geom_point(position = "jitter") +
+  geom_boxplot() +
+  ylab("Average UBA1\nUMIs per cell") +
   scale_fill_manual(values = cell.type.palette) +
   theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position = "None")
 
@@ -1099,9 +1115,9 @@ p.uba1.exp <- md.merged %>%
 #   scale_fill_manual(values = cell.type.palette) +
 #   theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position = "None")
 
-p.combined.uba1 <- p.genotyping.rate / p.uba1.exp + plot_layout(heights = c(2, 1)) + plot_annotation(title = "UBA1 expression vs. genotyping rate", subtitle = "Summarized per donor")
+p.combined.uba1 <- p.genotyping.rate / p.uba1.exp + plot_layout(heights = c(2, 1)) + plot_annotation(title = "UBA1 expression vs. genotyping rate")
 p.combined.uba1
-ggsave(paste0(current.plots.path, "/UBA1_genotyping_per_cluster_metrics.pdf"), plot = p.combined.uba1, dpi = 300, device = "pdf", width = 5, height = 8)
+ggsave(paste0(current.plots.path, "/UBA1_genotyping_per_cluster_metrics.pdf"), plot = p.combined.uba1, dpi = 300, device = "pdf", width = 5, height = 5)
 
 
 ########################################### Plots - QC metrics ############################################
@@ -1122,6 +1138,71 @@ rna.obj@meta.data %>%
   theme(legend.position = "none") +
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 
+################################### Plotting cb-sniffer vs. GoT genotyping rates ##############################
+
+## There may be differences in the percents used here and those used in the PPT made previously because
+## the PPT was using all cellranger-identified cells and here we are using only cells in our final QC-filtered
+## seurat object
+
+## Mapping
+NIH_mapping_list <- c(
+  UPN14_BMMC = "GSM5858683",
+  UPN15_BMMC = "GSM5858684",
+  UPN16_BMMC = "GSM5858685",
+  UPN17_BMMC = "GSM5858686",
+  UPN14_CD34 = "GSM5858670",
+  UPN15_CD34 = "GSM5858671",
+  UPN16_CD34 = "GSM5858672",
+  UPN17_CD34 = "GSM5858673"
+)
+
+## Load a list of every barcode with a cb_sniffer output
+barcode.lists <- lapply(unique(rna.obj$orig.ident), function(x) {
+  cb.sniffer.file <- x
+  if (x %in% names(NIH_mapping_list)) {
+    cb.sniffer.file <- NIH_mapping_list[[x]]
+  }
+  cb.sniff.barcodes <- read_tsv(paste0("/gpfs/commons/home/rmurray/VEXAS/cb_sniffer/output/", cb.sniffer.file, "/", cb.sniffer.file, "_counts_CB.tsv")) %>% pull(barcode) %>% paste0(x, "_", .)
+  return(cb.sniff.barcodes)
+})
+barcode.list <- do.call(c, barcode.lists)
+
+## Add cb.sniffer output to metadata
+md.cb.sniffer <- md %>% 
+  rownames_to_column("barcode") %>% 
+  mutate(has_cbsniffer_output = barcode %in% barcode.list) %>% 
+  mutate(has_GoT_output = Genotype %in% c("MUT", "WT"))
+
+## Look at genotyping differences
+md.cb.sniffer %>% count(has_cbsniffer_output, has_GoT_output)
+md.cb.sniffer.summarized.sample <- md.cb.sniffer %>% 
+  group_by(orig.ident) %>% 
+  summarize(fraction_genotyped_cbsniffer = sum(has_cbsniffer_output) / n(), fraction_genotyped_GoT = sum(has_GoT_output) / n())
+md.cb.sniffer.summarized.sample %>% arrange(-fraction_genotyped_cbsniffer)
+
+## Pivot to a longer format for plotting
+md.cb.sniffer.summarized.sample.formatted <- md.cb.sniffer.summarized.sample %>% 
+  pivot_longer(cols = c(fraction_genotyped_cbsniffer, fraction_genotyped_GoT), names_to = c("genotyping_method"), values_to = "genotyping_fraction") %>% 
+  mutate(genotyping_method = gsub("fraction_genotyped_", "", genotyping_method)) %>% 
+  mutate(`Sample Type` = if_else(grepl("CD34$|BM15|plus|pos", orig.ident), "CD34+", "CD34-/unenriched"))
+
+## Plot as bar plot
+p.genotyping.comparison <- md.cb.sniffer.summarized.sample.formatted %>% 
+  group_by(genotyping_method) %>% 
+  summarize(mean_val = mean(genotyping_fraction), sd_val = sd(genotyping_fraction), n = n(), se_val = sd_val / sqrt(n)) %>% 
+  ggplot(aes(x = genotyping_method, y = mean_val)) +
+  geom_col(color = "black", fill = "grey80") +
+  # scale_fill_manual(values = c("#FDD49D", "#F58E3D")) +
+  geom_errorbar(aes(x = genotyping_method, ymin = mean_val-se_val, ymax = mean_val+se_val), width=0.4, size = 0.25, color = "black") +
+  geom_point(data = md.cb.sniffer.summarized.sample.formatted, mapping = aes(x = genotyping_method, y = genotyping_fraction,  color = `Sample Type`), alpha = 0.5) +
+  # guides(color = FALSE, size = FALSE)
+  geom_line(data = md.cb.sniffer.summarized.sample.formatted, mapping = aes(x = genotyping_method, y = genotyping_fraction, group = orig.ident, color = `Sample Type`), linetype = "longdash", alpha = 0.5) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = c("black", "#F58E3D")) +
+  xlab("Genotyping method") + ylab("Percent of cells genotyped") +
+  ggtitle("Genotyping rate", subtitle = "GEX vs. targeted UBA1 GoT library")
+p.genotyping.comparison
+ggsave("figures/current_figure_drafts/RNA_GEX_GoT_genotyping_comparison.pdf", device = "pdf", dpi = 300, width = 3.5, height = 4.5)
 
 ######################### Save the number of genes expressed in at least 10 cells for each cell type (for ATAC) ##################
 
