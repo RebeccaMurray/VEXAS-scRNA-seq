@@ -78,7 +78,8 @@ mclapply(c("HSC", "EMP", "LMPP", "MkP", "GMP", "Early Eryth", "CD14 Mono"), func
     print(paste0("Fewer than 3 donors for cluster ", celltype))
   }
   se <- subset(se, Donor %in% donors.keep)
-  print(table(se$Donor))
+  print(se@meta.data %>% count(Genotype))
+  print(se@meta.data %>% count(Donor, Genotype))
   
   # ## Only keep donors with at least 20 cells genotyped
   # donors.keep <- intersect(
