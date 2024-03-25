@@ -1,5 +1,5 @@
-library(ggh4x)
 library(Seurat)
+library(ggh4x)
 library(tidyverse)
 library(gridExtra)
 library(ggrepel)
@@ -16,7 +16,7 @@ source("~/rscripts/general_helpers/volcano_plots.R")
 source("~/rscripts/general_helpers/custom_fgsea_helpers.R")
 current.plots.path <- c("figures/current_figure_drafts/")
 
-rna.obj <- readRDS("~/rscripts/VEXAS_RNA_seurat/data/seurat_objects/vexas_final_RNA_data_celltypes.rds")
+rna.obj <- readRDS("~/rscripts/VEXAS_RNA_seurat/data/seurat_objects/vexas_final_RNA_data_celltypes_umap_updated_20231218.rds")
 
 
 ######################################## Making a metadata data frame with coordinates ####################
@@ -70,18 +70,11 @@ ggsave(paste0(current.plots.path, "/UMAP_RNA_Donor.pdf"), plot = p.sample.origin
 ggsave(paste0(current.plots.path, "/UMAP_RNA_Donor_no_legend.pdf"), plot = p.sample.origin + theme(legend.position = "none"), device = "pdf", dpi = 300, width = 7, height = 7, unit = "in")
 
 
-## VEXAS vs. control
-p.vexas.vs.control <- ggplot(md[sample(1:nrow(md)), ], aes(x = UMAP_1, y = UMAP_2, fill = Object)) +
-  geom_point(pch = 21, size = 1, stroke = 0.1, color = "black") + ## size controls width of point, stroke controls width of border, color is border color
-  scale_fill_manual(values = c(VEXAS = "#2A9098", CONTROL = "#F5B935")) +
-  theme_classic() + coord_fixed() +
-  theme(legend.position = "none", legend.title = element_blank(), legend.text = element_text(size = 12)) +
-  guides(x = axis, y = axis) +
-  scale_x_continuous(breaks = NULL) +
-  scale_y_continuous(breaks = NULL) +
-  theme(axis.line = element_line(arrow = arrow()), axis.title = element_text(hjust = 0))  + coord_fixed()
-p.vexas.vs.control
-ggsave(paste0(current.plots.path, "/UMAP_RNA_vexas_vs_control.pdf"), plot = p.vexas.vs.control, device = "pdf", dpi = 300, width = 7, height = 7, unit = "in")
+## Sample of origin - split
+p.sample.origin.split <- DimPlot(rna.obj, split.by = "Donor", group.by = "Donor", ncol = 5) + NoLegend()
+p.sample.origin.split
+ggsave("figures/current_figure_drafts/RNA_UMAP_sample_origin_split.tiff", plot = p.sample.origin.split, device = "tiff", dpi = 300, width = 12, height = 5.5)
+
 
 ## Bar plot of cell type proportions per donor
 donor.order <- md %>% 
@@ -106,9 +99,10 @@ p.celltype.fractions.per.donor <- md %>%
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
   xlab(element_blank()) +
   ylab("Percent of total cells") +
-  scale_y_continuous(labels = scales::percent)
+  scale_y_continuous(labels = scales::percent) +
+  theme(legend.position = "right") + guides(fill=guide_legend(ncol=3,byrow=TRUE))
 p.celltype.fractions.per.donor
-ggsave(paste0(current.plots.path, "/celltype_proportions_per_donor.pdf"), plot = p.celltype.fractions.per.donor, device = "pdf", dpi = 300, width = 6, height = 4.5, unit = "in")
+ggsave(paste0(current.plots.path, "/celltype_proportions_per_donor.pdf"), plot = p.celltype.fractions.per.donor, device = "pdf", dpi = 300, width = 6, height = 2.5, unit = "in")
 
 ## Azimuth labels
 to.plot.tags <- rna.obj@meta.data %>% group_by(predicted.celltype.l2) %>% count() %>% filter(n > 50) %>% pull(predicted.celltype.l2)
@@ -168,18 +162,6 @@ p.celltypes
   theme(axis.line = element_line(arrow = arrow()), axis.title = element_text(hjust = 0))  + coord_fixed()
 ggsave(paste0(current.plots.path, "/UMAP_RNA_celltypes_no_labels_no_outlines.pdf"), plot = p.celltypes, device = "pdf", dpi = 300, width = 7, height = 7, unit = "in")
 
-## Cell type labels, no labels, no dot outline
-p.celltypes <- ggplot(md, aes(x = UMAP1, y = UMAP2, color = CellType)) +
-  geom_point(pch = 19, size = 1, stroke = 0.1) + ## size controls width of point, stroke controls width of border, color is border color
-  scale_color_manual(values = cell.type.palette) +
-  theme_classic() + coord_fixed() +
-  theme(legend.position = "none", legend.title = element_blank(), legend.text = element_text(size = 12)) +
-  guides(x = axis, y = axis) +
-  scale_x_continuous(breaks = NULL) +
-  scale_y_continuous(breaks = NULL) +
-  theme(axis.line = element_line(arrow = arrow()), axis.title = element_text(hjust = 0))  + coord_fixed()
-p.celltypes
-ggsave(paste0(current.plots.path, "/UMAP_RNA_celltypes_no_labels_no_outlines.pdf"), plot = p.celltypes, device = "pdf", dpi = 300, width = 3, height = 3, unit = "in")
 
 ## Predicted cell types, with labels (using DimPlot)
 p.celltypes <- DimPlot(rna.obj, group.by = "CellType", cols = cell.type.palette, label = T, label.box = T, repel = T) + NoLegend() + coord_fixed() +
@@ -243,8 +225,67 @@ p.hsc
 ggsave("figures/current_figure_drafts/UMAP_RNA_HSC_highlight.pdf", plot = p.hsc, device = "pdf", width = 5, height = 4)
 ggsave("figures/current_figure_drafts/UMAP_RNA_HSC_highlight.tiff", plot = p.hsc, device = "tiff", width = 5, height = 4)
 
+###################################### VEXAS and control data plots #######################################################
+
+## VEXAS vs. control
+rna.obj.control <- readRDS("/gpfs/commons/home/tbotella/VEXAS/PAPER/Dec_2023/pseudotime/vexas_pseudotime_cells.Rds")
+md.control <- rna.obj.control[[]]
+coords.control <- Embeddings(rna.obj.control[["UMAP"]])
+md.control <- cbind(md.control, coords.control) %>% dplyr::rename(`UMAP1` = umap_1) %>% dplyr::rename(`UMAP2` = umap_2)
+p.vexas.vs.control <- ggplot(md.control[sample(1:nrow(md.control)), ], aes(x = UMAP1, y = UMAP2, fill = Object)) +
+  geom_point(pch = 21, size = 1, stroke = 0.1, color = "black") + ## size controls width of point, stroke controls width of border, color is border color
+  scale_fill_manual(values = c(CONTROL = "grey50", VEXAS = "#2B858C")) +
+  theme_classic() + coord_fixed() +
+  theme(legend.position = "none", legend.title = element_blank(), legend.text = element_text(size = 12)) +
+  guides(x = axis, y = axis) +
+  scale_x_continuous(breaks = NULL) +
+  scale_y_continuous(breaks = NULL) +
+  theme(axis.line = element_line(arrow = arrow()), axis.title = element_text(hjust = 0))  + coord_fixed()
+p.vexas.vs.control
+ggsave(paste0(current.plots.path, "/UMAP_RNA_vexas_vs_control_teal_grey.pdf"), plot = p.vexas.vs.control, device = "pdf", dpi = 300, width = 7, height = 7, unit = "in")
+
+## Cell type labels, no labels, controls included
+p.celltypes.control <- ggplot(md.control, aes(x = UMAP1, y = UMAP2, fill = AllCellType, label = AllCellType)) +
+  geom_point(pch = 21, size = 1, stroke = 0.1, color = "black") + ## size controls width of point, stroke controls width of border, color is border color
+  scale_fill_manual(values = cell.type.palette) +
+  theme_classic() + coord_fixed() +
+  theme(legend.position = "none", legend.title = element_blank(), legend.text = element_text(size = 12)) +
+  guides(x = axis, y = axis) +
+  scale_x_continuous(breaks = NULL) +
+  scale_y_continuous(breaks = NULL) +
+  theme(axis.line = element_line(arrow = arrow()), axis.title = element_text(hjust = 0))  + coord_fixed()
+p.celltypes.control
+ggsave(paste0(current.plots.path, "/UMAP_RNA_celltypes_no_labels_controls_included.pdf"), plot = p.celltypes.control, device = "pdf", dpi = 300, width = 7, height = 7, unit = "in")
+
 
 ###################################### Making plots - genotyping UMAPS ################################################
+
+## Print the genotyping fraction (overall)
+rna.obj@meta.data %>% 
+  count(Genotype_Approx_Match_No_Gene_Thresh) %>% 
+  pivot_wider(names_from = Genotype_Approx_Match_No_Gene_Thresh, values_from = n) %>% 
+  mutate(total = sum(MUT, WT, `NA`)) %>% 
+  mutate(frac_genotyped = sum(MUT, WT) / total) %>% 
+  arrange(-frac_genotyped)
+
+## Print the genotyping fraction (by sample)
+rna.obj@meta.data %>% 
+  group_by(Donor, Genotype_Approx_Match_No_Gene_Thresh) %>% 
+  count() %>% 
+  pivot_wider(names_from = Genotype_Approx_Match_No_Gene_Thresh, values_from = n) %>% 
+  mutate(total = sum(MUT, WT, `NA`)) %>% 
+  mutate(frac_genotyped = sum(MUT, WT) / total) %>% 
+  arrange(-frac_genotyped)
+
+## Print the genotyping fraction (by sample, stat summaries)
+rna.obj@meta.data %>% 
+  group_by(Donor, Genotype_Approx_Match_No_Gene_Thresh) %>% 
+  count() %>% 
+  pivot_wider(names_from = Genotype_Approx_Match_No_Gene_Thresh, values_from = n) %>% 
+  mutate(total = sum(MUT, WT, `NA`)) %>% 
+  mutate(frac_genotyped = sum(MUT, WT) / total) %>% 
+  ungroup() %>% 
+  summarize(mean_frac_genotyped = mean(frac_genotyped), sd = sd(frac_genotyped))
 
 ## Genotyping UMAP (individual points)
 mut.count <- md %>% filter(Genotype == "MUT") %>% nrow()
@@ -297,42 +338,6 @@ per.patient.plots <- lapply(levels(rna.obj$Donor), function(x) {
 p.combined <- wrap_plots(per.patient.plots, nrow = 2)
 ggsave("figures/current_figure_drafts/RNA_UMAP_genotyping_split.tiff", plot = p.combined, device = "tiff", dpi = 300, width = 12, height = 5.5)
 
-
-p.genotyping.split <- ggplot(md.na, aes(x = UMAP1, y = UMAP2, color = Genotype)) +
-  geom_point(shape = 19, size = 0.05, color = "grey80") + 
-  geom_point(data = md.mut, shape = 19, size = 0.1, color = vexas.genotyping.palette[["MUT"]]  ) +
-  geom_point(data = md.wt, shape = 19, size = 0.1, color = vexas.genotyping.palette[["WT"]]) +
-  scale_color_manual(labels = c(
-    `MUT` = mut.title,
-    `WT` = wt.title,
-    `NA` = na.title
-  ), values = unlist(vexas.genotyping.palette)) +
-  theme_classic() + coord_fixed() +
-  facet_wrap(~ Donor, ncol = 5) +
-  theme(legend.position = c(1, 0.9), legend.title = element_blank(), legend.text = element_text(size = 12)) +
-  guides(x = axis, y = axis) +
-  scale_x_continuous(breaks = NULL) +
-  scale_y_continuous(breaks = NULL) +
-  theme(axis.line = element_line(arrow = arrow()), axis.title = element_text(hjust = 0)) + coord_fixed()
-p.genotyping.split
-ggsave(paste0(current.plots.path, "/UMAP_RNA_genotyping_dots_donor_split.pdf"), plot = p.genotyping.split, device = "pdf", dpi = 300, width = 7, height = 4, unit = "in")
-
-## Print the overall genotyping fraction
-rna.obj@meta.data %>% 
-  count(Genotype_Approx_Match_No_Gene_Thresh) %>% 
-  pivot_wider(names_from = Genotype_Approx_Match_No_Gene_Thresh, values_from = n) %>% 
-  mutate(total = sum(MUT, WT, `NA`)) %>% 
-  mutate(frac_genotyped = sum(MUT, WT) / total) %>% 
-  arrange(-frac_genotyped)
-
-rna.obj@meta.data %>% 
-  group_by(Donor, Genotype_Approx_Match_No_Gene_Thresh) %>% 
-  count() %>% 
-  pivot_wider(names_from = Genotype_Approx_Match_No_Gene_Thresh, values_from = n) %>% 
-  mutate(total = sum(MUT, WT, `NA`)) %>% 
-  mutate(frac_genotyped = sum(MUT, WT) / total) %>% 
-  arrange(-frac_genotyped)
-
 ## Genotyping UMAP (heatmaps)
 umap.lims.x <- c(min(md$UMAP1), max(md$UMAP1)) 
 umap.lims.y <- c(min(md$UMAP2), max(md$UMAP2)) 
@@ -372,45 +377,55 @@ ggsave(paste0(current.plots.path, "/UMAP_RNA_points_heatmap_na.pdf"), plot = p.g
 
 ###################################### Plots - MUT cell frequencies ################################################
 
-median.pseudotime.values <- md %>% 
-  group_by(CellType) %>% 
-  summarize(median_pseudotime = median(monocle3_pseudotime))
+# median.pseudotime.values <- md %>% 
+#   group_by(CellType) %>% 
+#   summarize(median_pseudotime = median(monocle3_pseudotime))
+
+overall_mut_fraction <- md %>% 
+  filter(Genotype %in% c("MUT", "WT")) %>% 
+  count(Genotype) %>% 
+  pivot_wider(names_from = Genotype, values_from = n) %>% 
+  mutate(overall_geno_frac = MUT / (MUT + WT)) %>% 
+  pull(overall_geno_frac)
 
 ## Summarize the MUT cell frequency per donor
 mut.fraction.per.donor <- md %>% 
   filter(CellType != "Other") %>%
   filter(Genotype %in% c("MUT", "WT")) %>%
   group_by(CellType) %>% 
-  mutate(CellType = gsub("GMP [0-9]", "GMP", CellType)) %>% 
-  filter(n() > 100) %>% ## Only including cell types with > 20 genotyped cells
+  mutate(CellType = gsub("CD4 |CD8 ", "", CellType))  %>%
+  filter(n() > 100) %>% ## Only including cell types with > this number genotyped cells
   group_by(CellType, Donor) %>% 
   filter(n() > 10) %>%  ## Only including patient data points with > 10 genotyped cells
   group_by(CellType, Genotype, Donor) %>%
   summarize(n = n()) %>% 
   group_by(CellType, Donor) %>% 
-  mutate(mut_fraction = n / sum(n)) %>% 
+  # mutate(mut_fraction = n / sum(n), overall_mut_fraction = overall_count_genotype/overall_count, normalized_mut_fraction = mut_fraction / overall_mut_fraction) %>% View
+  mutate(mut_fraction = n / sum(n), normalized_mut_fraction = mut_fraction / overall_mut_fraction) %>%
   filter(Genotype == "MUT") %>% 
   group_by(CellType) %>% 
   filter(n_distinct(Donor) >= 3)
 
 summarized.freqs <- mut.fraction.per.donor %>% 
-  summarize(mean_val = mean(mut_fraction), sd_val = sd(mut_fraction), n = n(), se_val = sd_val / sqrt(n)) %>% 
-  merge(., median.pseudotime.values, group.by = CellType)
+  summarize(mean_val = mean(normalized_mut_fraction), sd_val = sd(normalized_mut_fraction), n = n(), se_val = sd_val / sqrt(n), median_val = median(normalized_mut_fraction)) %>% 
+  merge(., median.pseudotime.values, group.by = CellType, all.x = T)
 
 ## Make the bar plot
 p.mutant_cell_fraction.bar.plot <- summarized.freqs %>% 
   ggplot(aes(x = reorder(CellType, -mean_val), y = mean_val, fill = CellType)) +
   geom_bar(stat = "identity", color = "black", size = 0.25) +
   geom_errorbar(aes(x = CellType, ymin = mean_val-se_val, ymax = mean_val+se_val), width=0.4, size = 0.25) +
-  geom_point(data = mut.fraction.per.donor, mapping = aes(x = CellType, y = mut_fraction, shape = Donor), position = position_jitter(width = 0.25), size = 1) +
-  coord_cartesian(ylim = c(0, 1)) +
+  geom_point(data = mut.fraction.per.donor, mapping = aes(x = CellType, y = normalized_mut_fraction, shape = Donor), position = position_jitter(width = 0.25), size = 1) +
   scale_shape_manual(values = seq(1, 10, 1)) +
   scale_fill_manual(values = cell.type.palette, guide = "none") +
-  scale_y_continuous(breaks=seq(0, 1, 0.2)) +
+  # scale_y_continuous(breaks=seq(0, 1, 0.2)) +
   theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
-  labs(y = "Mutant cell fraction", x = element_blank()) + coord_fixed(9)
+  geom_hline(yintercept = 1, linetype = "longdash", color = "black") +
+  coord_fixed(ylim = c(0, 1.5), ratio = 7) +
+  scale_y_continuous(breaks = c(0, 0.5, 1, 1.5)) +
+  labs(y = "Normalized mutant-\ncell frequency", x = element_blank())
 p.mutant_cell_fraction.bar.plot
-ggsave(paste0(current.plots.path, "/MUT_cell_freq_bar_plot.pdf"), plot = p.mutant_cell_fraction.bar.plot, device = "pdf", dpi = 300, width = 6, height = 4, unit = "in")
+ggsave(paste0(current.plots.path, "/normalized_MUT_cell_freq_bar_plot.pdf"), plot = p.mutant_cell_fraction.bar.plot, device = "pdf", dpi = 300, width = 6, height = 4, unit = "in")
 
 ## Save as a csv
 summarized.freqs %>% 
@@ -471,6 +486,30 @@ p.azimuth.labels <- md %>%
   ggtitle("Azimuth labels")
 p.azimuth.labels
 ggsave("figures/current_figure_drafts/RNA_T_NK_separation_azimuth_labels.pdf", p.azimuth.labels, device = "pdf", dpi = 300, width = 2, height = 3, unit = "in")
+
+## Based on azimuth labels
+p.azimuth.labels <- md %>% 
+  filter(CellType %in% c("CD4 T", "CD8 T", "NK")) %>% 
+  filter(predicted.celltype.l1 %in% c("CD4 T", "CD8 T", "NK")) %>% 
+  filter(Genotype %in% c("MUT", "WT")) %>% 
+  mutate(Category = if_else(predicted.celltype.l1 == "NK", "NK", "CD4/CD8 T")) %>% 
+  group_by(Donor, Category) %>% 
+  filter(n() > 10) %>% ## Only including patient data points with > 10 genotyped cells
+  group_by(Donor, Category, Genotype) %>% 
+  count() %>% 
+  pivot_wider(names_from = Genotype, values_from = n, values_fill = 0) %>% 
+  summarize(mut_cell_fraction = MUT / (MUT + WT)) %>% 
+  ggplot(aes(x = Category, y = mut_cell_fraction, fill = Category)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("#FFCB88", "#FF7B0B")) +
+  stat_compare_means(label = "p.format", size = 3)  +
+  theme(legend.position = "none") + 
+  ylab("Mutant cell fraction") +
+  # facet_grid(cols = vars(Donor)) +
+  ggtitle("Azimuth labels")
+p.azimuth.labels
+ggsave("figures/current_figure_drafts/RNA_T_NK_separation_azimuth_labels_actual_labels_only.pdf", p.azimuth.labels, device = "pdf", dpi = 300, width = 2, height = 3, unit = "in")
 
 ## ADT
 
@@ -674,13 +713,13 @@ plist <- lapply(c("DDIT3", "DDIT4", "IL1B"), function(x) {
     filter(CellType %in% c("HSC")) %>% 
     mutate(CellType = factor(CellType, levels = c("HSC"))) %>% 
     group_by(Genotype) %>% 
-    sample_n(size = 500, replace = T) %>% 
+    # sample_n(size = 500, replace = T) %>% 
     ggplot(., aes_string(x = "Genotype", y = "gene", fill = "Genotype")) +
     geom_violin() +
     # geom_boxplot() +
     geom_jitter(width = 0.1, size = 0.1) +
     scale_fill_manual(values = vexas.genotyping.palette) +
-    # facet_grid(cols = vars(CellType)) +
+    facet_grid(rows = vars(Donor)) +
     stat_compare_means(method = "wilcox.test", label = "p.format") +
     scale_y_continuous(expand = c(0.1, 0)) +
     theme(legend.position = "none") +
@@ -720,10 +759,18 @@ plist <- lapply(c("HSPA8", "CAT", "DDIT4", "HLA-DRA"), function(x) {
 p.important.genes <- wrap_plots(plist, ncol = 2) + plot_layout(guides = "collect")
 ggsave(paste0(current.plots.path, "/RNA_important_gene_violins_medians.pdf"), plot = p.important.genes, dpi = 300, device = "pdf", width = 10, height = 7)
 
-############################################## XBP1s - sample-aware permutation test ###################################
+
+############################################## XBP1s - sample-aware permutation test (unfiltered, HSPC) ###################################
+
+## Save a table of the spliced/unspliced XBP1 UMI counts per donor, cell type, and genotype
+rna.obj@meta.data %>% filter(CellType %in% c("HSC", "EMP", "LMPP", "MkP", "GMP")) %>% 
+  group_by(CellType, Donor, Genotype) %>% summarize(cell_count = n(), spliced_sum = sum(Spliced_XBP1, na.rm = T), unspliced_sum = sum(Unspliced_XBP1, na.rm = T)) %>% 
+  mutate(splicing_ratio = spliced_sum/unspliced_sum) %>% 
+  filter(Genotype != "NA") %>% 
+  write_csv("data/xbp1_splicing/xbp1_read_counts_kallisto_output.csv")
 
 donors.keep <- rna.obj@meta.data %>% 
-  mutate(has_xbp1s_info = !is.na(Unspliced_XBP1_umi_filtered)) %>% 
+  mutate(has_xbp1s_info = !is.na(Unspliced_XBP1)) %>% 
   group_by(Donor) %>% 
   summarize(frac_genotyped = sum(has_xbp1s_info) / n()) %>% 
   filter(frac_genotyped > 0) %>% 
@@ -734,11 +781,12 @@ md.xbp1 <- rna.obj@meta.data %>%
   filter(cluster_celltype %in% c("HSC", "EMP", "LMPP", "MkP", "GMP")) %>% 
   filter(Genotype %in% c("MUT", "WT"))
 
-## Helper function to calculate the mean difference
+## Helper function: pseudobulks by genotype, calculates the spliced/unspliced ratio within genotype,
+## then takes the mean between the two ratios
 calculate_difference_of_means <- function(df) {
   df %>% 
     group_by(Genotype) %>% 
-    summarize(spliced_sum = sum(Spliced_XBP1_umi_filtered, na.rm = T), unspliced_sum = sum(Unspliced_XBP1_umi_filtered, na.rm = T)) %>% 
+    summarize(spliced_sum = sum(Spliced_XBP1, na.rm = T), unspliced_sum = sum(Unspliced_XBP1, na.rm = T)) %>% 
     mutate(splicing_ratio = spliced_sum/unspliced_sum) %>% 
     select(Genotype, splicing_ratio) %>% 
     pivot_wider(values_from = splicing_ratio, names_from = Genotype) %>% 
@@ -754,33 +802,107 @@ mean_diff_results <- sapply(1:10000, function(iter) {
     mutate(Genotype = sample(Genotype, replace = F)) %>% 
     calculate_difference_of_means(.)
 })
-hist(mean_diff_results)
 
 ## Calculate the actual mean difference
 observed.mean.diff <- calculate_difference_of_means(md.xbp1)
 
-sum(mean_diff_results > observed.mean.diff) / length(mean_diff_results)
+## Calculate the fraction of simulated results that are above the observed value
+p.value <- sum(mean_diff_results > observed.mean.diff) / length(mean_diff_results)
+print(p.value)
+
+## Plot histogram of all iterations
+as.data.frame(mean_diff_results) %>% 
+  ggplot(aes(x = mean_diff_results, y = ..count..)) +
+  geom_histogram() +
+  ggtitle("Pseudobulked splicing ratios, MUT - WT", subtitle = "Sample-aware permutation test, n = 10,000") +
+  annotate("text", x = -0.02, y = 1000, label = paste0("Observed\ndifference = ", round(observed.mean.diff, digits = 4), "\np < 0.0001"), hjust = 0, size = 3) +
+  # annotate("text", x = 0, y = 800, label = paste0("p = ", p.value)) +
+  # annotate("text", x = 0, y = 800, label = "p < 0.0001") +
+  geom_vline(xintercept = observed.mean.diff, linetype = "longdash", color = "darkred") + 
+  xlab("XBP1s/XPB1u[MUT] - XBP1s/XPB1u[WT]") +
+  ylab("Count")
+ggsave("figures/current_figure_drafts/sample_aware_permutation_test_10k_iterations_kallisto_output.pdf", device = "pdf", width = 4.5, height = 3, dpi = 300)
+
+############################################## XBP1s - sample-aware permutation test (unfiltered, HSC) ###################################
+
+donors.keep <- rna.obj@meta.data %>% 
+  filter(cluster_celltype == "HSC") %>% 
+  count(Donor, Genotype) %>% 
+  filter(Genotype != "NA") %>% 
+  filter(n > 10) %>% 
+  count(Donor) %>% 
+  filter(n > 1) %>% 
+  pull(Donor)
+  
+md.xbp1 <- rna.obj@meta.data %>% 
+  filter(Donor %in% donors.keep) %>% 
+  filter(cluster_celltype == "HSC") %>% 
+  filter(Genotype %in% c("MUT", "WT"))
+
+## Helper function: pseudobulks by genotype, calculates the spliced/unspliced ratio within genotype,
+## then takes the mean between the two ratios
+calculate_difference_of_means <- function(df) {
+  df %>% 
+    group_by(Genotype) %>% 
+    summarize(spliced_sum = sum(Spliced_XBP1, na.rm = T), unspliced_sum = sum(Unspliced_XBP1, na.rm = T)) %>% 
+    mutate(splicing_ratio = spliced_sum/unspliced_sum) %>% 
+    select(Genotype, splicing_ratio) %>% 
+    pivot_wider(values_from = splicing_ratio, names_from = Genotype) %>% 
+    mutate(mean_diff = MUT - WT) %>% 
+    pull(mean_diff)
+}
+
+## Shuffle the genotype labels and calculate within patients
+md.xbp1.shuf <- md.xbp1
+n = 1000
+mean_diff_results <- sapply(1:n, function(iter) {
+  md.xbp1.shuf %>% 
+    group_by(Donor) %>% 
+    mutate(Genotype = sample(Genotype, replace = F)) %>% 
+    group_by(Donor, Genotype) %>% 
+    sample_n(size = 25) %>% 
+    calculate_difference_of_means(.)
+})
+
+## Calculate the actual mean difference
+observed.mean.diff <- calculate_difference_of_means(md.xbp1)
+
+## Calculate the fraction of simulated results that are above the observed value
+p.value <- sum(mean_diff_results > observed.mean.diff) / length(mean_diff_results)
+print(p.value)
+
+## Plot histogram of all iterations
+as.data.frame(mean_diff_results) %>% 
+  ggplot(aes(x = mean_diff_results, y = ..count..)) +
+  geom_histogram() +
+  ggtitle("Pseudobulked splicing ratios, MUT - WT", subtitle = paste0("Sample-aware permutation test, n = ", n)) +
+  annotate("text", x = -0.02, y = 100, label = paste0("Observed\ndifference = ", round(observed.mean.diff, digits = 4)), hjust = 0, size = 3) +
+  annotate("text", x = 0, y = 80, label = paste0("p = ", p.value)) +
+  # annotate("text", x = 0, y = 800, label = "p < 0.0001") +
+  geom_vline(xintercept = observed.mean.diff, linetype = "longdash", color = "darkred") + 
+  xlab("XBP1s/XPB1u[MUT] - XBP1s/XPB1u[WT]") +
+  ylab("Count")
+# ggsave("figures/current_figure_drafts/sample_aware_permutation_test_10k_iterations_kallisto_output.pdf", device = "pdf", width = 4.5, height = 3, dpi = 300)
 
 
-############################################### Plots - XBP1s ##############################################################
+############################################### XBP1s - sample-aware permutation test boxplots (unfiltered) ##############################################################
 
 ## Make a bar plot with XBP1s values
 donors.keep <- rna.obj@meta.data %>% 
-  mutate(has_xbp1s_info = !is.na(Unspliced_XBP1_umi_filtered)) %>% 
+  mutate(has_xbp1s_info = !is.na(Unspliced_XBP1)) %>% 
   group_by(Donor) %>% 
   summarize(frac_genotyped = sum(has_xbp1s_info) / n()) %>% 
   filter(frac_genotyped > 0) %>% 
   pull(Donor)
 
-
 ## Pseudobulk by donor
 p.xbp1.bars <- md %>% 
   filter(Donor %in% donors.keep) %>% 
-  # filter(cluster_celltype == "HSC") %>% 
-  filter(cluster_celltype %in% c("HSC", "EMP", "LMPP", "MkP", "GMP")) %>% 
+  # filter(cluster_celltype == "HSC") %>%
+  filter(cluster_celltype %in% c("HSC", "EMP", "LMPP", "MkP", "GMP")) %>%
   filter(Genotype %in% c("MUT", "WT")) %>% 
   group_by(Genotype, Donor) %>% 
-  summarize(spliced_sum = sum(Spliced_XBP1_umi_filtered, na.rm = T), unspliced_sum = sum(Unspliced_XBP1_umi_filtered, na.rm = T), cell_count = n()) %>% 
+  summarize(spliced_sum = sum(Spliced_XBP1, na.rm = T), unspliced_sum = sum(Unspliced_XBP1, na.rm = T), cell_count = n()) %>% 
   mutate(splicing_ratio = spliced_sum/unspliced_sum) %>% 
   summarize(mean_splicing_ratio = mean(splicing_ratio),
             sd = sd(splicing_ratio),
@@ -793,20 +915,29 @@ p.xbp1.bars <- md %>%
   ylab("XBP1s/XBP1u") +
   theme(legend.position = "none") +
   ggtitle("XBP1s/XBP1u", subtitle = "HSPCs") +
-  annotate("text", x = 1.2, y = 0.4, label="  p < 0.0001", size = 3)
+  # annotate("text", x = 1.2, y = 0.4, label=paste0("p = ", p.value), size = 3)
+  annotate("text", x = 1.2, y = 0.4, label="p < 0.0001", size = 3)
 p.xbp1.bars
-ggsave("figures/current_figure_drafts/RNA_xbp1s_column_plot.pdf", plot = p.xbp1.bars, device = "pdf", dpi = 300, width = 1.5, height = 2.5)
+ggsave("figures/current_figure_drafts/RNA_xbp1s_column_plot_kallisto_output.pdf", plot = p.xbp1.bars, device = "pdf", dpi = 300, width = 1.5, height = 2.5)
+
 
 ################################################ Plots - Monocyte volcano, GSEA enrichment plots ###################################
 
-cd14.mono.results <- read_csv("data/differential_expression/VEXAS_MUT_vs_WT/5p_genotyped_cells_no_RP_MT_renormalized/CD14 Mono_5cells_genotyped_20231206.csv") %>% mutate(avg_log2FC = log2(fc)) %>% mutate(cluster = "Mono")
+cd14.mono.results <- read_csv("data/differential_expression/VEXAS_MUT_vs_WT/CD14 Mono_min_10_cells_20240505.csv") %>% mutate(avg_log2FC = log2(fc)) %>% mutate(cluster = "Mono")
+cd14.mono.results <- read_csv("data/differential_expression/VEXAS_MUT_vs_WT/CD14 Mono_min_20_cells_varfeatures_20240505.csv") %>% mutate(avg_log2FC = log2(fc)) %>% mutate(cluster = "Mono")
 
 ## Plot CD14 monocyte plot
-p.mono.volcano <- plot_volcano(cd14.mono.results, stat_column = "pval", stat_line = 0.05, effect_line = 0.25, max.overlaps = 30) + 
-  coord_cartesian(xlim = c(-1.2, 1.2)) +
+genes.highlight = list(
+  MUT = cd14.mono.results %>% slice_min(n = 30, order_by = pval) %>% filter(avg_log2FC > 0) %>% pull(feature),
+  WT = cd14.mono.results %>% slice_min(n = 30, order_by = pval) %>% filter(avg_log2FC < 0) %>% pull(feature)
+  # pathway = pathways$HALLMARK_TNFA_SIGNALING_VIA_NFKB
+)
+p.mono.volcano <- plot_volcano(cd14.mono.results, stat_column = "pval", stat_line = 0.05, effect_line = 0.2, max.overlaps = 30,
+                               only_genes = genes.highlight, only_genes_colors = vexas.genotyping.palette) + 
+  coord_cartesian(xlim = c(-1.4, 1.4), ylim = c(0, 5)) +
   ggtitle("CD14 Monocytes, MUT vs. WT")
 p.mono.volcano
-ggsave("figures/current_figure_drafts/RNA_volcano_monocytes_20231205.pdf", plot = p.mono.volcano, device = "pdf", dpi = 300, width = 7, height = 5)
+ggsave("figures/current_figure_drafts/RNA_volcano_monocytes_exp_10_cells_all_features_20240305.pdf", plot = p.mono.volcano, device = "pdf", dpi = 300, width = 7, height = 5)
 
 ## Plot CD14 monocyte plot - no labels
 p.mono.volcano <- plot_volcano(cd14.mono.results, genotyping_column = NA, stat_column = "pval", stat_line = 0.05, effect_line = 0.25, label_genes = F) + 
@@ -817,14 +948,40 @@ ggsave("figures/current_figure_drafts/RNA_volcano_monocytes_no_labels.pdf", plot
 
 fgsea.out <- run_fgsea_for_list(cd14.mono.results)
 
-fgsea.out %>% 
-  write_csv("figures/current_figure_drafts/fgsea_results_for_figure_CD14_mono.csv")
+## Try re-ranking
+de_results.ranked <- cd14.mono.results %>%
+  filter(!is.na(pval)) %>% 
+  # mutate(rank = -log10(pval)*sign(avg_log2FC)) %>%
+  mutate(rank = avg_log2FC) %>% 
+  # mutate(rank = -log10(pval)) %>%
+  arrange(-rank)
+current.ranks.list <- de_results.ranked$rank
+names(current.ranks.list) <- de_results.ranked$feature
 
+fgsea.out <- run_fgsea_for_list(ranks.list = current.ranks.list)
+
+fgsea.out %>% 
+  write_csv("figures/current_figure_drafts/fgsea_results_for_figure_CD14_mono_10_cells_all_features.csv")
+
+## Plot enrichment - troubleshooting
+m_t2g = msigdbr(species = "Homo sapiens", category = "H", subcategory = NULL)
+pathways = split(x = m_t2g$gene_symbol, f = m_t2g$gs_name) # format for fgsea
+plotEnrichment(pathways$HALLMARK_TNFA_SIGNALING_VIA_NFKB, current.ranks.list)
+
+## Plot enrichment
+p1 <- plot_enrichment(ranks.list = current.ranks.list, pathway = "HALLMARK_TNFA_SIGNALING_VIA_NFKB", pval_show = "padj") + theme_classic() + geom_line(color = "#BA242A", size = 1)
+p2 <- plot_enrichment(cd14.mono.results, ranks.list = current.ranks.list, pathway.name = "HALLMARK_G2M_CHECKPOINT", pval_show = "padj") + theme_classic() + geom_line(color = "#BA242A", size = 1)
+p3 <- plot_enrichment(cd14.mono.results, ranks.list = current.ranks.list, pathway.name = "KEGG_UBIQUITIN_MEDIATED_PROTEOLYSIS", pval_show = "padj") + theme_classic() + geom_line(color = "#BA242A", size = 1)
+p.combined <- p1 | p2
+p.combined
+ggsave("figures/current_figure_drafts/RNA_enrichment_monocytes_exp_10_cells_all_features_20240305.pdf", plot = p.combined, device = "pdf", dpi = 300, width = 8, height = 3.5)
+
+## Plot gsea bar plot
 p.mono.gsea <- fgsea.out %>% 
-  filter(padj < 0.25) %>% 
-  mutate(status = sign(NES)) %>% 
-  group_by(status) %>% 
-  slice_min(n = 5, order_by = pval) %>% 
+  # filter(padj < 0.25) %>% 
+  # mutate(status = sign(NES)) %>% 
+  # group_by(status) %>% 
+  slice_min(n = 10, order_by = pval) %>% 
   mutate(pathway = gsub("_", " ", pathway) %>% str_to_title(.) %>% str_wrap(., width = 40)) %>% 
   dplyr::select(pathway, NES, padj) %>% 
   # column_to_rownames("pathway")
@@ -832,101 +989,108 @@ p.mono.gsea <- fgsea.out %>%
   ggplot(aes(x = reorder(pathway, NES), y = NES, fill = `-log10(padj)*sign(NES)`)) +
   geom_col() +
   xlab(element_blank()) +
-  scale_fill_gradient2(low = vexas.genotyping.palette[[1]], mid = "white", high = vexas.genotyping.palette[[2]], limits=c(-1, 1), oob = scales::squish) +
+  theme_classic() +
+  scale_fill_gradient2(low = vexas.genotyping.palette[[1]], mid = "white", high = vexas.genotyping.palette[[2]], limits=c(-3, 3), oob = scales::squish) +
   coord_flip()
 p.mono.gsea
-ggsave("figures/current_figure_drafts/RNA_gsea_monocytes.pdf", plot = p.mono.gsea, device = "pdf", dpi = 300, width = 6, height = 2)
+ggsave("figures/current_figure_drafts/RNA_gsea_bar_plot_NES_plotted_monocytes_exp_10_cells_all_features_20240305.pdf", plot = p.mono.gsea, device = "pdf", dpi = 300, width = 6, height = 2)
 
-p.mono.dotplot <- fgsea.out %>% 
-  filter(padj < 0.25) %>% 
-  mutate(status = sign(NES)) %>% 
-  group_by(status) %>% 
-  slice_min(n = 5, order_by = pval) %>% 
-  mutate(pathway = gsub("_", " ", pathway) %>% str_to_title(.) %>% str_wrap(., width = 15)) %>% 
-  dplyr::select(pathway, NES, padj) %>% 
+## Plot gsea bar plot by pval
+p.mono.gsea <- fgsea.out %>% 
+  # filter(padj < 0.25) %>% 
+  mutate(status = if_else(sign(NES) > 0, "MUT", "WT")) %>%
+  # group_by(status) %>% 
+  slice_min(n = 10, order_by = pval) %>% 
+  mutate(pathway = gsub("_", " ", pathway) %>% str_to_title(.) %>% str_wrap(., width = 40)) %>% 
+  dplyr::select(pathway, NES, padj, status) %>% 
   # column_to_rownames("pathway")
   mutate(`-log10(padj)*sign(NES)` = -log10(padj) * sign(NES)) %>% 
-  ggplot(aes(y = reorder(pathway, NES), x = "", fill = `-log10(padj)*sign(NES)`)) +
-  geom_point(aes(size = abs(NES)), shape = 21) +
-  ylab(element_blank()) +
-  scale_size_continuous(range = c(3,8)) +
+  ggplot(aes(x = reorder(pathway, -log10(padj)*sign(NES)), y = `-log10(padj)*sign(NES)`, fill = status)) +
+  scale_fill_manual(values = vexas.genotyping.palette) +
+  geom_col() +
   xlab(element_blank()) +
-  scale_fill_gradient2(low = vexas.genotyping.palette[[1]], mid = "white", high = vexas.genotyping.palette[[2]], limits=c(-1.5, 1.5), oob = scales::squish) 
-p.mono.dotplot
-ggsave("figures/current_figure_drafts/RNA_dotplot_monocytes_custom.pdf", plot = p.mono.dotplot, device = "pdf", dpi = 300, width = 4, height = 3.5)
+  geom_hline(yintercept = -log10(0.1), linetype = "longdash") +
+  geom_hline(yintercept = log10(0.1), linetype = "longdash") +
+  theme_classic() +
+  # scale_fill_gradient2(low = vexas.genotyping.palette[[1]], mid = "white", high = vexas.genotyping.palette[[2]], limits=c(-1, 1), oob = scales::squish) +
+  coord_flip()
+p.mono.gsea
+ggsave("figures/current_figure_drafts/RNA_gsea_bar_plot_pval_plotted_monocytes_exp_10_cells_all_features_20240305.pdf", plot = p.mono.gsea, device = "pdf", dpi = 300, width = 6, height = 2)
 
-## Plot as heatmap
-fgsea.out %>% 
-  filter(padj < 0.1) %>% 
-  mutate(pathway = gsub("_", " ", pathway) %>% str_to_title(.) %>% str_wrap(., width = 18)) %>% 
-  dplyr::select(pathway, NES) %>%
-  # mutate(`-log10(padj)*sign(NES)` = -log10(padj) * sign(NES)) %>% 
-  # column_to_rownames("pathway")
-  ggplot(aes(x = reorder(pathway, -`NES`), y = "const", fill = NES)) +
-  geom_tile() +
-  scale_fill_gradient2(low = vexas.genotyping.palette[[1]], mid = "white", high = vexas.genotyping.palette[[2]], limits = c(0, 2)) +
-  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), axis.text.y = element_blank(), axis.ticks.y = element_blank(), axis.title.x = element_blank()) + ylab("") 
-
-## Plot enrichment
-p1 <- plot_enrichment(cd14.mono.results, pathway.name = "HALLMARK_TNFA_SIGNALING_VIA_NFKB", pval_col = "pval", pval_show = "pval") + theme_classic() + geom_line(color = "#BA242A", size = 1)
-p2 <- plot_enrichment(cd14.mono.results, pathway.name = "GOBP_RESPONSE_TO_ENDOPLASMIC_RETICULUM_STRESS", pval_col = "pval", pval_show = "pval") + theme_classic() + geom_line(color = "#BA242A", size = 1)
-p.combined <- p1 / p2
-p.combined
-ggsave("figures/current_figure_drafts/RNA_mono_enrichment_plots.pdf", plot = p.combined, device = "pdf", dpi = 300, width = 4, height = 5)
 
 ############################################### Plots - HSC volcano, GSEA enrichment plots ##########################################
 
-de.results <- read_csv("data/differential_expression/VEXAS_MUT_vs_WT/5p_genotyped_cells_no_RP_MT_renormalized/HSC_5cells_genotyped_20231206.csv") %>% mutate(avg_log2FC = log2(fc)) %>% mutate(cluster = "HSC")
+de.results <- read_csv("data/differential_expression/VEXAS_MUT_vs_WT/5p_genotyped_cells_no_RP_MT_renormalized/HSC_5cells_genotyped_20231206.csv") %>%
+  mutate(avg_log2FC = log2(fc)) %>% 
+  mutate(cluster = "HSC") %>% 
+  mutate(fdr = if_else(fdr < 1e-30, 1e-30, fdr))
+  
 
 ## Annotated volcanoes
 fgsea.out <- run_fgsea_for_list(de.results)
 
+## Try re-ranking
+de_results.ranked <- de.results %>%
+  filter(!is.na(pval)) %>% 
+  # mutate(rank = -log10(pval)*sign(avg_log2FC)) %>%
+  mutate(rank = avg_log2FC) %>% 
+  # mutate(rank = -log10(pval)) %>%
+  arrange(-rank)
+current.ranks.list <- de_results.ranked$rank
+names(current.ranks.list) <- de_results.ranked$feature
+
+fgsea.out <- run_fgsea_for_list(de.results, ranks.list = current.ranks.list)
+fgsea.out2 <- run_fgsea_for_list(de.results, genes.tested = de.results$feature)
+
+## Annotating genes based on Sars's annotations
 volcano.gene.list <- list(
-  `all` = c(de.results %>% filter(abs(avg_log2FC) > 0.4 | -log10(fdr) > 10) %>% pull(feature))
+  # `all` = c(de.results %>% filter(abs(avg_log2FC) > 0.4 | -log10(fdr) > 10) %>% pull(feature))
+  # `all` = c("EEF1B2", "EEF1A1"),
+  Translation = c("EEF1B2", "EEF1A1", "EEF1G", "EEF2", "EIF3L", "EIF4B", "EIF3F"),
+  Inflammation = c("IFITM1", "HLA-DPB1", "HLA-DRA", "HLA-A", "IFITM2", "ISG20", "IRF1", "CD47", "IL1B", "CXCL3", "CXCL2", "CXCL8"),
+  UPR = c("CD99", "DDIT4", "CALCRL", "XBP1", "CALR", "ATF4", "DDIT3"),
   # `UPR` = c("DDIT4", "ATF4", "DDIT3", "CALCRL", "CALR", "XBP1", "CD99", "EEF1A1", "EIF3L", "EIF3F", "EEF2"),
   # `Inflammation` = c("IFITM1", "IFITM2", "ISG20", "IRF1", "CD47", "IL1B", "HLA-DRA", "HLA-DPB1", "HLA-A"),
-  # `Myeloid/Differentiation` = c("CD38", "MYC", "CAT", "CDK6")
+  `Myeloid` = c("CD38", "MYC", "CAT", "CDK6")
 )
-# fgsea.out <- run_fgsea_for_list(de.results)
-# volcano.gene.list <- list(
-#   `ATF4 targets` = intersect(fgsea.out %>% filter(pathway == "ATF4_ONLY_HAN") %>% pull(leadingEdge) %>% unlist(), de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature)),
-#   `Interferon` = union(
-#     intersect(fgsea.out %>% filter(pathway == "HALLMARK_INTERFERON_ALPHA_RESPONSE") %>% pull(leadingEdge) %>% unlist(), de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature)),
-#     intersect(fgsea.out %>% filter(pathway == "HALLMARK_INTERFERON_GAMMA_RESPONSE") %>% pull(leadingEdge) %>% unlist(), de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature))
-#     ),
-#   `Antigen presentation` = c(de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature) %>% grep("HLA", ., value = T), "CD74", "B2M", "CD99"),
-#   `Translation` = intersect(fgsea.out %>% filter(pathway == "REACTOME_TRANSLATION") %>% pull(leadingEdge) %>% unlist(), de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature))
-# )
-# volcano.gene.list <- list(
-#   `P53` = intersect(fgsea.out %>% filter(pathway == "HALLMARK_P53_PATHWAY") %>% pull(leadingEdge) %>% unlist(), de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature)),
-#   `Translation` = intersect(fgsea.out %>% filter(pathway == "REACTOME_TRANSLATION") %>% pull(leadingEdge) %>% unlist(), de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature)),
-#   `Myeloid bias` = c("CD99", intersect(fgsea.out %>% filter(pathway == "GOBP_LEUKOCYTE_DIFFERENTIATION") %>% pull(leadingEdge) %>% unlist(), de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature))),
-#   `Antigen presentation` = c(de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature) %>% grep("HLA", ., value = T), "CD74", "B2M")
-# )
+
+## Annotating genes based on overlap with gene modules
+fgsea.out <- run_fgsea_for_list(de.results)
+volcano.gene.list <- list(
+  `UPR` = intersect(fgsea.out %>% filter(pathway == "ATF4_ONLY_HAN") %>% pull(leadingEdge) %>% unlist(), de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature)),
+  `Inflammation` = union(
+    intersect(fgsea.out %>% filter(pathway == "HALLMARK_INTERFERON_ALPHA_RESPONSE") %>% pull(leadingEdge) %>% unlist(), de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature)),
+    intersect(fgsea.out %>% filter(pathway == "HALLMARK_INTERFERON_GAMMA_RESPONSE") %>% pull(leadingEdge) %>% unlist(), de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature))
+    ),
+  `Translation` = intersect(fgsea.out %>% filter(pathway == "REACTOME_TRANSLATION") %>% pull(leadingEdge) %>% unlist(), de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature)),
+  `Myeloid` = c("CD99", intersect(fgsea.out %>% filter(pathway == "GOBP_LEUKOCYTE_DIFFERENTIATION") %>% pull(leadingEdge) %>% unlist(), de.results %>% filter(fdr < 0.05 & abs(avg_log2FC) > 0.2) %>% pull(feature)))
+)
 
 ## Pick colors + plot volcano
 volcano.gene.list.colors <- c(
   all = "darkgreen",
-  `Myeloid/Differentiation` = "blue4",
+  `Myeloid` = "blue4",
   `UPR` = "darkgreen", 
-  `Inflammation` = "brown4"
+  `Inflammation` = "brown4",
+  `Translation` = "orange"
 )
 
 ## Plot volcano with labels
 p.volcano <- plot_volcano(de.results, metadata.df = rna.obj@meta.data %>% filter(CellType == "HSC") %>% filter(Genotype %in% c("MUT", "WT")) %>% filter(!(Donor %in% c("PT13", "PT14", "PT25"))), 
-                          effect_cutoff = 0.2, effect_line = 0.2, stat_line = 0.2, stat_column = "fdr", title = paste0("HSCs"), 
+                          effect_cutoff = 0.2, effect_line = 0.2, stat_line = 0.05, stat_column = "fdr", title = paste0("HSCs"), 
                           genotyping_column = "Genotype", 
                           only_genes = volcano.gene.list, only_genes_colors = volcano.gene.list.colors) + 
   theme(legend.position = "right") +
   ylab("-log10(FDR)") +
   xlab("Average log2(FC)") +
-  coord_cartesian(ylim=c(0, 30), xlim = c(-1.5, 1.5))
+  coord_cartesian(xlim = c(-1.5, 1.5))
+  # coord_cartesian(ylim=c(0, 30), xlim = c(-1.5, 1.5))
 p.volcano
-ggsave(paste0(current.plots.path, "/RNA_HSC_diff_exp_extra_genes_20231205.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 6.5, height = 5)
+ggsave(paste0(current.plots.path, "/RNA_HSC_diff_exp_20240103.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 6.5, height = 5)
 
 ## Plot volcano without labels
 p.volcano <- plot_volcano(de.results, metadata.df = rna.obj@meta.data %>% filter(CellType == "HSC") %>% filter(Genotype %in% c("MUT", "WT")) %>% filter(!(Donor %in% c("PT13", "PT14", "PT25"))), 
-                          effect_cutoff = 0.2, effect_line = 0.2, stat_line = 0.2, stat_column = "fdr", title = paste0("HSCs"), 
+                          effect_cutoff = 0.2, effect_line = 0.2, stat_line = 0.05, stat_column = "fdr", title = paste0("HSCs"), 
                           genotyping_column = "Genotype", 
                           label_genes = F) + 
   theme(legend.position = "right") +
@@ -934,19 +1098,29 @@ p.volcano <- plot_volcano(de.results, metadata.df = rna.obj@meta.data %>% filter
   xlab("Average log2(FC)") +
   coord_cartesian(ylim=c(0, 30), xlim = c(-1.5, 1.5))
 p.volcano
-ggsave(paste0(current.plots.path, "/RNA_HSC_diff_exp_no_labels_20231205.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 6.5, height = 5)
+ggsave(paste0(current.plots.path, "/RNA_HSC_diff_exp_no_labels_20240304.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 6.5, height = 5)
+
+## Plot volcano highlighting HLAs
+p.volcano <- plot_volcano(de.results, effect_cutoff = 0.05, effect_line = 0.2, stat_line = 0.05, stat_column = "fdr", title = paste0("HSCs"), 
+                          only_genes = c(HLA = fgsea.out %>% filter(pathway == "KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION") %>% pull(leadingEdge)),
+                          only_genes_colors = c("HLA" = "darkred")) + 
+  theme(legend.position = "right") +
+  ylab("-log10(FDR)") +
+  xlab("Average log2(FC)") +
+  coord_cartesian(ylim=c(0, 30), xlim = c(-1.5, 1.5))
+p.volcano
 
 
 ## Enrichment plots
-p1 <- plot_enrichment(de.results, pathway = "ATF4_ONLY_HAN") + theme_classic()
-p2 <- plot_enrichment(de.results, pathway = "HALLMARK_GLYCOLYSIS") + theme_classic()
-p3 <- plot_enrichment(de.results, pathway = "KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION") + theme_classic()
-p4 <- plot_enrichment(de.results, pathway = "GOBP_MYELOID_CELL_DIFFERENTIATION") + theme_classic()
-p5 <- plot_enrichment(de.results, pathway = "GOCC_VESICLE_MEMBRANE") + theme_classic()
-(p1 | p2 ) / (p3 + p4)
+p1 <- plot_enrichment(ranks.list = current.ranks.list, pathway = "ATF4 targets (Han et al.)", pval_show = "padj") + theme_classic() + geom_line(color = "#BA242A", size = 0.5)
+p2 <- plot_enrichment(ranks.list = current.ranks.list, pathway = "HALLMARK_INTERFERON_ALPHA_RESPONSE", pval_show = "padj") + theme_classic() + geom_line(color = "#BA242A", size = 0.5)
+p3 <- plot_enrichment(ranks.list = current.ranks.list, pathway = "REACTOME_TRANSLATION", pval_show = "padj") + theme_classic()  + geom_line(color = "#BA242A", size = 0.5)
+p4 <- plot_enrichment(ranks.list = current.ranks.list, pathway = "GOBP_MONONUCLEAR_CELL_DIFFERENTIATION", pval_show = "padj") + theme_classic() + geom_line(color = "#BA242A", size = 0.5)
+p.combined <- (p2 | p1 ) / (p4 + p3)
+p.combined
+ggsave("figures/current_figure_drafts/HSC_RNA_volcano_gsea_plots_linewidth_05.pdf", width = 6.5, height = 5)
 
-p1 / p4 / p2
-
+plot_enrichment(ranks.list = current.ranks.list, pathway = "KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION", pval_show = "padj") + theme_classic() + geom_line(color = "#BA242A", size = 0.5)
 
 ###################################### Plots - ADT differential expression ################################################
 
@@ -1204,6 +1378,68 @@ p.genotyping.comparison <- md.cb.sniffer.summarized.sample.formatted %>%
 p.genotyping.comparison
 ggsave("figures/current_figure_drafts/RNA_GEX_GoT_genotyping_comparison.pdf", device = "pdf", dpi = 300, width = 3.5, height = 4.5)
 
+######################### Looking at cell cycle ##################################
+
+md %>% 
+  filter(Genotype %in% c("MUT", "WT")) %>% 
+  filter(cluster_celltype %in% c("HSC", "EMP", "LMPP", "MkP", "GMP")) %>% 
+  ggplot(aes(x = S.Score, y = G2M.Score, color = Genotype)) +
+  geom_point(alpha = 0.25) +
+  geom_hline(yintercept = 0, linetype = "longdash") +
+  geom_vline(xintercept = 0, linetype = "longdash") +
+  # coord_cartesian(ylim = c(-0.2, 0.2)) +
+  facet_grid(cols = vars(Genotype), rows = vars(cluster_celltype), scales = "free") +
+  scale_color_manual(values = vexas.genotyping.palette)
+
+plist <- lapply(c("HSC", "EMP", "LMPP", "MkP", "GMP"), function(x) {
+  donors.keep <- md %>% 
+    filter(Genotype %in% c("MUT", "WT")) %>% 
+    filter(cluster_celltype == x) %>% 
+    count(Donor, Genotype) %>% filter(n >= 5) %>% ungroup() %>% count(Donor) %>% filter(n > 1) %>% pull(Donor)
+  
+  md %>% 
+    filter(Genotype %in% c("MUT", "WT")) %>% 
+    filter(cluster_celltype == x) %>% 
+    filter(Donor %in% donors.keep) %>% 
+    group_by(Donor, Genotype) %>% 
+    # filter(n() > 10) %>% 
+    summarize(count = n(), S_or_G2M_count = sum(Phase %in% c("S", "G2M")), g1_count =sum(Phase == "G1"), S_G2M_fraction = sum(Phase %in% c("S", "G2M")) / n()) %>% 
+    ggplot(aes(x = Genotype, y = S_G2M_fraction)) +
+    geom_boxplot(outlier.shape = NA) + geom_point(aes(color = Donor)) +
+    geom_line(aes(group = Donor, color = Donor)) +
+    stat_compare_means() +
+    ggtitle(x) +
+    scale_y_continuous(expand = c(0.2, 0))
+})
+
+wrap_plots(plist)
+
+## Looking at correlation with apoptosis
+md
+
+######################### Making DNMT3A overlap plots ##################################
+
+ont.data <- read_csv("data/ont_genotyping/ONT_Genotyping.csv")
+ont.data %>% 
+  count(DNMT3A_genotype, UMI_WT_DNMT3A, UMI_MUT_DNMT3A)
+p.ont <- ont.data %>% 
+  filter(!is.na(UBA1_genotype) & !is.na(DNMT3A_genotype)) %>% 
+  group_by(UBA1_genotype, DNMT3A_genotype) %>% 
+  count() %>% 
+  mutate(`Genotype status` = paste0(UBA1_genotype, DNMT3A_genotype)) %>% 
+  mutate(`Genotype status` = plyr::mapvalues(`Genotype status`, from = c("MUTMUT", "MUTWT", "WTWT"), to = c("UBA1 MUT, DNMT3A MUT", "UBA1 MUT, DNMTA3A WT", "UBA1 WT, DNMT3A WT"))) %>% 
+  ggplot(aes(y = n, axis1 = UBA1_genotype, axis2 = DNMT3A_genotype)) +
+  geom_alluvium(aes(fill = `Genotype status`), width = 1/6) +
+  geom_stratum(width = 1/3, alpha = 1) +
+  scale_fill_manual(values = c("grey10", "grey50", "grey70")) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  scale_x_discrete(limits = c("UBA1_genotype", "DNMT3A_genotype"), expand = c(.05, .05)) +
+  ylab("Cell count") +
+  ggtitle("PT02, DNMT3A vs. UBA1 Genotype")
+p.ont
+ggsave("figures/current_figure_drafts/RNA_ONT_DNMT3A_genotyping.pdf", device = "pdf", dpi = 300, width = 6, height = 4)
+
+
 ######################### Save the number of genes expressed in at least 10 cells for each cell type (for ATAC) ##################
 
 for (celltype in c("HSC", "EMP", "LMPP", "MkP", "GMP")) {
@@ -1216,6 +1452,7 @@ for (celltype in c("HSC", "EMP", "LMPP", "MkP", "GMP")) {
 
 ######################## Resave the seurat object after re-running RunUMAP (for control integration) #######################
 
+DefaultAssay(rna.obj) <-"integrated"
 rna.obj <- RunUMAP(rna.obj, reduction = "pca", dims = 1:50, seed.use = 1, return.model = TRUE, reduction.name = "umap_v2")
 rna.obj <- FindNeighbors(rna.obj, reduction = "pca", dims = 1:50)
 rna.obj <- FindClusters(rna.obj, resolution = 2)
