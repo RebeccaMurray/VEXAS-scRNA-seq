@@ -383,7 +383,7 @@ rna.obj@meta.data %>%
   mutate(frac_genotyped = sum(MUT, WT) / total) %>% 
   arrange(-frac_genotyped) %>% write_csv("data/genotyping_metrics_RNA_HSPCs.csv")
 
-## Genotyping UMAP (individual points)
+## Genotyping UMAP (individual points) - USED IN MANUSCRIPT
 mut.count <- md %>% filter(Genotype == "MUT") %>% nrow()
 wt.count <- md %>% filter(Genotype == "WT") %>% nrow()
 na.or.het.count <- md %>% filter(Genotype == "NA") %>% nrow()
@@ -541,7 +541,7 @@ mut.fraction.per.donor <- md %>%
 summarized.freqs <- mut.fraction.per.donor %>% 
   summarize(mean_val = mean(normalized_mut_fraction), sd_val = sd(normalized_mut_fraction), n = n(), se_val = sd_val / sqrt(n), median_val = median(normalized_mut_fraction))
 
-## Make the bar plot
+## Make the bar plot - USED IN MANUSCRIPT
 cell.type.palette[["T"]] <- cell.type.palette[["CD8 T"]]
 p.mutant_cell_fraction.bar.plot <- summarized.freqs %>% 
   ggplot(aes(x = reorder(CellType, -mean_val), y = mean_val, fill = CellType)) +
@@ -1045,9 +1045,8 @@ ggsave("figures/current_figure_drafts/RNA_xbp1s_bar_plot_kallisto_output_line_pl
 ################################################ Plots - Monocyte volcano, GSEA enrichment plots ###################################
 
 cd14.mono.results <- read_csv("data/differential_expression/VEXAS_MUT_vs_WT/CD14 Mono_min_10_cells_20240505.csv") %>% mutate(avg_log2FC = log2(fc)) %>% mutate(cluster = "Mono")
-cd14.mono.results <- read_csv("data/differential_expression/VEXAS_MUT_vs_WT/CD14 Mono_min_20_cells_varfeatures_20240505.csv") %>% mutate(avg_log2FC = log2(fc)) %>% mutate(cluster = "Mono")
 
-## Plot CD14 monocyte plot
+## Plot CD14 monocyte plot - USED IN MANUSCRIPT
 genes.highlight = list(
   MUT = cd14.mono.results %>% slice_min(n = 30, order_by = pval) %>% filter(avg_log2FC > 0) %>% pull(feature),
   WT = cd14.mono.results %>% slice_min(n = 30, order_by = pval) %>% filter(avg_log2FC < 0) %>% pull(feature)
@@ -1061,16 +1060,7 @@ p.mono.volcano <- plot_volcano(cd14.mono.results, stat_column = "pval", stat_lin
 p.mono.volcano
 ggsave("figures/current_figure_drafts/RNA_volcano_monocytes_exp_10_cells_all_features_20240420.pdf", plot = p.mono.volcano, device = "pdf", dpi = 300, width = 7, height = 5)
 
-## Plot CD14 monocyte plot - no labels
-p.mono.volcano <- plot_volcano(cd14.mono.results, genotyping_column = NA, stat_column = "pval", stat_line = 0.05, effect_line = 0.25, label_genes = F) + 
-  coord_cartesian(xlim = c(-1.2, 1.2)) +
-  ggtitle("CD14 Monocytes, MUT vs. WT")
-p.mono.volcano
-ggsave("figures/current_figure_drafts/RNA_volcano_monocytes_no_labels.pdf", plot = p.mono.volcano, device = "pdf", dpi = 300, width = 7, height = 5)
-
-fgsea.out <- run_fgsea_for_list(cd14.mono.results)
-
-## Try re-ranking
+## Rank genes by log2fc
 de_results.ranked <- cd14.mono.results %>%
   filter(!is.na(pval)) %>% 
   # mutate(rank = -log10(pval)*sign(avg_log2FC)) %>%
@@ -1098,7 +1088,7 @@ p.combined <- p1 | p2
 p.combined
 ggsave("figures/current_figure_drafts/RNA_enrichment_monocytes_exp_10_cells_all_features_20240305.pdf", plot = p.combined, device = "pdf", dpi = 300, width = 8, height = 3.5)
 
-## Plot gsea bar plot
+## Plot gsea bar plot - USED IN MANUSCRIPT
 p.mono.gsea <- fgsea.out %>% 
   # filter(padj < 0.25) %>% 
   # mutate(status = sign(NES)) %>% 
