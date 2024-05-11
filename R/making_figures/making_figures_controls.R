@@ -59,6 +59,19 @@ rna.obj.control@meta.data %>%
   arrange(-frac_genotyped) %>% 
   write_csv("data/metadata/cell_counts_donor_genotype_controls_included.csv")
 
+## Saving cell type, genotype, Donor with controls included
+rna.obj.control@meta.data %>% 
+  group_by(AllCellType, Object, Donor, Genotype_Approx_Match_No_Gene_Thresh) %>% 
+  count() %>% 
+  pivot_wider(names_from = Genotype_Approx_Match_No_Gene_Thresh, values_from = n, values_fill = 0) %>% 
+  mutate(total = sum(MUT, WT, `NA`)) %>% 
+  mutate(frac_genotyped = sum(MUT, WT) / total) %>% 
+  mutate(mut_cell_frequency = MUT / sum(MUT, WT)) %>% 
+  mutate(frac_genotyped = ifelse(Object == "CONTROL", NA_real_, frac_genotyped)) %>% 
+  mutate(mut_cell_frequency = ifelse(Object == "CONTROL", NA_real_, mut_cell_frequency)) %>% 
+  arrange(AllCellType, Object, Donor, -total) %>%
+  write_csv("data/metadata/cell_counts_celltype_genotype_donor_controls_included.csv")
+
 ## nCount_RNA
 sample.order <- rna.obj.control@meta.data %>% group_by(Sample) %>% summarize(mean_nCount_RNA = mean(nCount_RNA)) %>% arrange(-mean_nCount_RNA) %>% pull(Sample)
 rna.obj.control@meta.data %>%
@@ -67,7 +80,8 @@ rna.obj.control@meta.data %>%
   geom_boxplot() +
   xlab(element_blank()) +
   scale_fill_manual(values = c(CONTROL = "#F5B935", VEXAS = "#2B858C")) +
-  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position = "none")
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position = "none") +
+  ylab(bquote("UMI count"(log[10])))
 ggsave("figures/current_figure_drafts/qc_plots_nCount_RNA_vexas_and_control_20240328.pdf", device = "pdf", dpi = 300, width = 7, height = 4)
 
 ## nFeature_RNA
@@ -157,16 +171,21 @@ rna.obj.control_hsc=rna.obj.control[,rna.obj.control$AllCellType%in%c('HSC')]
 rna.obj.control_emp=rna.obj.control[,rna.obj.control$AllCellType%in%c('EMP')]
 rna.obj.control_lmpp=rna.obj.control[,rna.obj.control$AllCellType%in%c('LMPP')]
 rna.obj.control_gmp=rna.obj.control[,rna.obj.control$AllCellType%in%c('GMP')]
+rna.obj.control_clp=rna.obj.control[,rna.obj.control$AllCellType%in%c('CLP')]
 
 met_hsc=rna.obj.control_hsc@meta.data[,c('AllCellType','Object','HALLMARK_APOPTOSIS1','HALLMARK_INFLAMMATORY_RESPONSE2','REACTOME_UNFOLDED_PROTEIN_RESPONSE_UPR3','GOBP_COMMON_MYELOID_PROGENITOR_CELL_PROLIFERATION4', 'REACTOME_TRANSLATION5')]
 met_emp=rna.obj.control_emp@meta.data[,c('AllCellType','Object','HALLMARK_APOPTOSIS1','HALLMARK_INFLAMMATORY_RESPONSE2','REACTOME_UNFOLDED_PROTEIN_RESPONSE_UPR3','GOBP_COMMON_MYELOID_PROGENITOR_CELL_PROLIFERATION4', 'REACTOME_TRANSLATION5')]
 met_lmpp=rna.obj.control_lmpp@meta.data[,c('AllCellType','Object','HALLMARK_APOPTOSIS1','HALLMARK_INFLAMMATORY_RESPONSE2','REACTOME_UNFOLDED_PROTEIN_RESPONSE_UPR3','GOBP_COMMON_MYELOID_PROGENITOR_CELL_PROLIFERATION4', 'REACTOME_TRANSLATION5')]
 met_gmp=rna.obj.control_gmp@meta.data[,c('AllCellType','Object','HALLMARK_APOPTOSIS1','HALLMARK_INFLAMMATORY_RESPONSE2','REACTOME_UNFOLDED_PROTEIN_RESPONSE_UPR3','GOBP_COMMON_MYELOID_PROGENITOR_CELL_PROLIFERATION4', 'REACTOME_TRANSLATION5')]
+met_clp=rna.obj.control_clp@meta.data[,c('AllCellType','Object','HALLMARK_APOPTOSIS1','HALLMARK_INFLAMMATORY_RESPONSE2','REACTOME_UNFOLDED_PROTEIN_RESPONSE_UPR3','GOBP_COMMON_MYELOID_PROGENITOR_CELL_PROLIFERATION4', 'REACTOME_TRANSLATION5')]
 
-met=do.call("rbind", list(met_hsc, met_emp,met_lmpp,met_gmp))
-met$AllCellType=factor(met$AllCellType, levels = c('HSC','EMP','LMPP','GMP'))
+cell.type.list <- c("HSC", "EMP", "LMPP", "GMP", "CLP")
 
-for (i in c('HSC','EMP','LMPP','GMP')){
+met=do.call("rbind", list(met_hsc, met_emp,met_lmpp,met_gmp, met_clp))
+met$AllCellType=factor(met$AllCellType, levels = cell.type.list)
+
+cell.type.list <- "CLP"
+for (i in cell.type.list){
   met_df=met[met$AllCellType==i,]
   
   ggplot(met_df, aes(x=Object, y=HALLMARK_APOPTOSIS1, group=Object,fill=Object)) + 
@@ -178,7 +197,7 @@ for (i in c('HSC','EMP','LMPP','GMP')){
   
 }
 
-for (i in c('HSC','EMP','LMPP','GMP')){
+for (i in cell.type.list){
   met_df=met[met$AllCellType==i,]
   
   ggplot(met_df, aes(x=Object, y=HALLMARK_INFLAMMATORY_RESPONSE2, group=Object,fill=Object)) + 
@@ -191,7 +210,7 @@ for (i in c('HSC','EMP','LMPP','GMP')){
 }
 
 
-for (i in c('HSC','EMP','LMPP','GMP')){
+for (i in cell.type.list){
   met_df=met[met$AllCellType==i,]
   
   ggplot(met_df, aes(x=Object, y=REACTOME_UNFOLDED_PROTEIN_RESPONSE_UPR3, group=Object,fill=Object)) + 
@@ -202,7 +221,7 @@ for (i in c('HSC','EMP','LMPP','GMP')){
   
 }
 
-for (i in c('HSC','EMP','LMPP','GMP')){
+for (i in cell.type.list){
   met_df=met[met$AllCellType==i,]
   
   ggplot(met_df, aes(x=Object, y=GOBP_COMMON_MYELOID_PROGENITOR_CELL_PROLIFERATION4, group=Object,fill=Object)) + 
@@ -212,7 +231,7 @@ for (i in c('HSC','EMP','LMPP','GMP')){
   
 }
 
-for (i in c('HSC','EMP','LMPP','GMP')){
+for (i in cell.type.list){
   met_df=met[met$AllCellType==i,]
   
   ggplot(met_df, aes(x=Object, y=REACTOME_TRANSLATION5, group=Object,fill=Object)) + 
@@ -243,7 +262,7 @@ df$Object=factor(df$Object, levels = c('Healthy','VEXAS'))
 df1=data.frame('donors'=df$Object, 'diff.score'=df[,'GOBP_COMMON_MYELOID_PROGENITOR_CELL_PROLIFERATION1'])
 df=data.frame('donors'=df$Object, 'diff.score'=df[,'GOBP_COMMON_MYELOID_PROGENITOR_CELL_PROLIFERATION1']-df[,'HOEBEKE_LYMPHOID_STEM_CELL_UP3'])
 
-
+## Myeloid bias density plot - USED IN MANUSCRIPT
 x_limits=c(min(df1$diff.score),max(df1$diff.score))
 ggplot(data = df1, aes(x = diff.score, group = donors, fill = donors)) +
   geom_density(adjust = 1.5, alpha = 0.8)+
@@ -255,12 +274,25 @@ ggplot(data = df1, aes(x = diff.score, group = donors, fill = donors)) +
   xlab("Myeloid Differentiation Score\n \n    (GOBP_COMMON_MYELOID_PROGENITOR_CELL_PROLIFERATION)")
 ggsave('figures/current_figure_drafts/figure1_density_scores_COMMON_MYE.pdf',width = 8, height=5)
 
+## Myeloid bias boxplot - USED IN MANUSCRIPT
 ggplot() +
   theme_classic(base_size = 15) +
   theme(text = element_text(face = "bold")) + ylab('')+
   geom_boxplot(data = df1, aes(x = diff.score, y = donors, group = donors, fill = donors))+ scale_fill_manual(values = c(Healthy = "#F5B935", VEXAS = "#2B858C")) +
-  xlab("Myeloid Differentiation Score\n \n    (GOBP_COMMON_MYELOID_PROGENITOR_CELL_PROLIFERATION)")
+  xlab("Myeloid Differentiation Score\n \n    (GOBP_COMMON_MYELOID_PROGENITOR_CELL_PROLIFERATION)") +
+  stat_compare_means(comparisons = list(c("VEXAS", "Healthy")))
 ggsave('figures/current_figure_drafts/figure1_density_scores_COMMON_MYE_boxplot_only.pdf',width = 8, height=2.5)
+
+## The same myeloid bias boxplot, but with p-value - USED IN MANUSCRIPT
+ggplot(data = df1, aes(y = diff.score, x = donors, group = donors, fill = donors)) +
+  theme_classic(base_size = 15) +
+  theme(text = element_text(face = "bold")) + xlab('')+
+  geom_boxplot()+ scale_fill_manual(values = c(Healthy = "#F5B935", VEXAS = "#2B858C")) +
+  ylab("Myeloid Differentiation Score\n \n    (GOBP_COMMON_MYELOID_PROGENITOR_CELL_PROLIFERATION)") +
+  stat_compare_means(comparisons = list(c("VEXAS", "Healthy")))  +
+  coord_flip()
+ggsave('figures/current_figure_drafts/figure1_density_scores_COMMON_MYE_boxplot_only_with_pval_included.pdf',width = 8, height=2.5)
+
 
 ## Alternate colors: c('Healthy' = '#2B858C', 'VEXAS' = '#FF7B0B')
 
@@ -268,11 +300,11 @@ ggsave('figures/current_figure_drafts/figure1_density_scores_COMMON_MYE_boxplot_
 
 DefaultAssay(rna.obj.control)='RNA'
 
-
 # Remove the genes we are NOT testing
 blacklist <- read_csv("/gpfs/commons/home/tbotella/VEXAS/RNA/MDS_splicing_project/blacklist_chry_chrx_mtgene_ribosome.csv")$blacklist
 rna.obj.control=rna.obj.control[!rownames(rna.obj.control)%in%blacklist,]
-rna.obj.control=subset(rna.obj.control, subset=AllCellType %in% c('HSC','LMPP','EMP','MkP', "GMP"))
+rna.obj.control=subset(rna.obj.control, subset=AllCellType %in% c('HSC','LMPP','EMP','MkP', "GMP", "CLP"))
+# rna.obj.control=subset(rna.obj.control, subset=AllCellType %in% c('HSC','LMPP','EMP','MkP', "GMP"))
 
 ## Renormalize after removing genes
 rna.obj.control <- NormalizeData(rna.obj.control, normalization.method = 'LogNormalize', assay = "RNA")
@@ -315,7 +347,7 @@ for (celltype in celltypes){
   
   Idents(prog.rna.obj.control)=as.factor(prog.rna.obj.control$Donor)
   prog.rna.obj.control <- subset(prog.rna.obj.control, downsample=200)
-  table(prog.rna.obj.control$Donor)
+  print(table(prog.rna.obj.control$Donor))
   
   ## Remove genes not detected in 10% of VEXAS cells
   prog.rna.obj.control.vexas <- subset(prog.rna.obj.control, Object == "VEXAS")
@@ -324,15 +356,19 @@ for (celltype in celltypes){
   
   vexas.vs.control <- FindMarkers(prog.rna.obj.control, assay = "RNA", ident.1 = "VEXAS", ident.2 = "CONTROL", group.by = 'Object', test.use='wilcox', features = features.test, logfc.threshold = 0)
   vexas.vs.control=vexas.vs.control[order(vexas.vs.control$avg_log2FC, decreasing = T),]
-  write.csv(vexas.vs.control,file = paste0('data/differential_expression/VEXAS_vs_control/vexas.vs.control.',celltype,'.DGE.csv'))
+  write.csv(vexas.vs.control,file = paste0('data/differential_expression/VEXAS_vs_control/test_vexas.vs.control.',celltype,'.DGE.csv'))
 }  
 #}, mc.cores = detectCores())
 
 
 ############################### Make the DE volcano plot #########################################
 
-de.results <- read_csv("data/differential_expression/VEXAS_vs_control/vexas.vs.control.HSC.DGE.csv") %>% mutate(cluster = "HSC") %>% dplyr::rename(feature = "...1")
+de.results <- read_csv("data/differential_expression/VEXAS_vs_control/vexas.vs.control.HSC.DGE.csv") %>% mutate(cluster = "HSC") %>% dplyr::rename(feature = "...1") %>% 
+  mutate(p_val_adj = if_else(p_val_adj < 1e-100, 1e-100, p_val_adj)) ## Capping p-values
 
+# de.results <- read_csv("data/differential_expression/VEXAS_vs_control/vexas.vs.control.CLP.DGE.csv") %>% mutate(cluster = "CLP") %>% dplyr::rename(feature = "...1") %>% 
+#   mutate(p_val_adj = if_else(p_val_adj < 1e-100, 1e-100, p_val_adj)) ## Capping p-values
+# 
 # pathways = readRDS('/gpfs/commons/home/tbotella/VEXAS/PAPER/Dec_2023/pathways.Rds')
 # fgsea.out <- run_fgsea_for_list(de.results, pval_col = "p_val")
 # volcano.gene.list <- list(
@@ -356,7 +392,8 @@ de.results <- read_csv("data/differential_expression/VEXAS_vs_control/vexas.vs.c
 # )
 
 volcano.gene.list <- list(
-  `highlight` = de.results %>% filter(p_val_adj < 0.05 & abs(avg_log2FC) > 0.5) %>% pull(feature)
+  `highlight` = de.results %>% filter(p_val_adj < 1e-25 & abs(avg_log2FC) > 0.5) %>% pull(feature)
+  # highlight = c("EEF1G", "SNHG32", "SNHG5", "MALAT1", "NAPL1", "MTRNR2L12", "CD74", "IFITM1", "ALDOA", "WASHC1", "HLA-DRB1", "PNRC1", "HIST1H1E", "GSTM2", "CLEC3B")
 )
 
 ## Pick colors + plot volcano
@@ -368,17 +405,29 @@ volcano.gene.list.colors <- c(
 ## Plot volcano with labels
 p.volcano <- plot_volcano(de.results, effect_line = 0.5, stat_line = 0.05, stat_column = "p_val_adj", title = paste0("HSCs"), max.overlaps = 25, only_genes = volcano.gene.list, only_genes_colors = volcano.gene.list.colors) + 
   theme(legend.position = "right") +
-  ylab("-log10(adjusted p-value)") +
-  xlab("Average log2(FC)")
-ggsave(paste0(current.plots.path, "/RNA_control_comparison_HSC_diff_exp_gene_categories_20231218.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 6.5, height = 5)
-ggsave(paste0(current.plots.path, "/RNA_control_comparison_HSC_diff_exp_gene_categories_zoomed_20231218_zoomed.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 10, height = 8)
+  ylab("-log10(Adjusted p-value)") +
+  xlab("Log2FC(VEXAS/Control)")
+p.volcano
+ggsave(paste0(current.plots.path, "/RNA_control_comparison_HSC_diff_exp_gene_categories_extra_genes_20240418.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 6.5, height = 5)
+ggsave(paste0(current.plots.path, "/RNA_control_comparison_HSC_diff_exp_gene_categories_zoomed_20240418.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 10, height = 8)
 
 p.volcano <- plot_volcano(de.results, effect_line = 0.5, stat_line = 0.05, stat_column = "p_val_adj", title = paste0("HSCs"), label_genes = F, only_genes = volcano.gene.list, only_genes_colors = volcano.gene.list.colors) + 
   theme(legend.position = "right") +
-  ylab("-log10(FDR)") +
-  xlab("Average log2(FC)")
-ggsave(paste0(current.plots.path, "/RNA_control_comparison_HSC_diff_exp_20231209_no_labels.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 6.5, height = 5)
+  ylab("-log10(Adjusted p-value)") +
+  xlab("Log2FC(VEXAS/Control)")
+ggsave(paste0(current.plots.path, "/RNA_control_comparison_HSC_diff_exp_20240418_no_labels.pdf"), plot = p.volcano, dpi = 300, device = "pdf", width = 6.5, height = 5)
 
+## Try re-ranking
+de_results.ranked <- de.results %>%
+  filter(!is.na(p_val)) %>% 
+  # mutate(rank = -log10(pval)*sign(avg_log2FC)) %>%
+  mutate(rank = avg_log2FC) %>% 
+  # mutate(rank = -log10(pval)) %>%
+  arrange(-rank)
+current.ranks.list <- de_results.ranked$rank
+names(current.ranks.list) <- de_results.ranked$feature
+
+fgsea.out <- run_fgsea_for_list(ranks.list = current.ranks.list)
 
 
 ############################ Genotype aware analysis with controls ###########################
@@ -550,6 +599,17 @@ p.volcano
 fgsea.res <- run_fgsea_for_list(vexas.MUT.vs.control, pval_col = "p_val")
 fgsea.res %>% 
   write_csv("data/differential_expression/VEXAS_MUT_vs_control/MUT_vs_control_40_cells_per_donor_fgsea.csv")
+
+################################### Looking at ATF4 and CHOP ################################
+
+pathways$ATF4_ONLY_HAN
+
+rna.obj.control=AddModuleScore(rna.obj.control, assay = "RNA", features = list(pathways$ATF4_ONLY_HAN, pathways$CHOP_ONLY_HAN), name=c("ATF4_ONLY_HAN", "CHOP_ONLY_HAN"),  seed=1234)
+rna.obj.control@meta.data %>% 
+  filter(AllCellType %in% c("HSC", "EMP", "LMPP", "MkP", "CLP", "CD14 Mono", "CD4 T", "CD8 T")) %>% 
+  ggplot(aes(x = Object, y = ATF4_ONLY_HAN1, fill = Object)) +
+  geom_boxplot() +stat_compare_means(method = "wilcox.test", label = "p.format") +
+  facet_grid(cols = vars(AllCellType))
 
 
 ##################################### Double-checking sex of donor ##########################
