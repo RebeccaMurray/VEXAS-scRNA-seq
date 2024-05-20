@@ -24,14 +24,41 @@ de.results <- lapply(cell.type.list, function (x) {
 fgsea.res.all <- lapply(names(de.results), function(x) { 
   print("Running for:")
   print(x)
-  fgsea.res <- run_fgsea_for_list(de.results[[x]], genes.tested = rna.obj@assays$RNA@data %>% rownames() %>% grep("^MT-|^RPL|^RPS", ., value = T, invert = T))
+  ## Try re-ranking
+  de_results.ranked <- de.results[[x]] %>%
+    filter(!is.na(pval)) %>% 
+    # mutate(rank = -log10(pval)*sign(avg_log2FC)) %>%
+    mutate(rank = avg_log2FC) %>% 
+    # mutate(rank = -log10(pval)) %>%
+    arrange(-rank)
+  current.ranks.list <- de_results.ranked$rank
+  names(current.ranks.list) <- de_results.ranked$feature
+  
+  fgsea.res <- run_fgsea_for_list(de.results, ranks.list = current.ranks.list, nPermSimple = 10000)
+  # fgsea.res <- run_fgsea_for_list(de.results[[x]], pval_col = "p_val")
   fgsea.res[["cluster"]] <- x
+  
   return(fgsea.res)
 }
 )
 
 fgsea.res.combined <- do.call(rbind, fgsea.res.all)
-fgsea.res.combined %>% write_csv("figures/current_figure_drafts/fgsea_used_for_heatmap.csv")
+fgsea.res.combined %>% write_csv("figures/current_figure_drafts/fgsea_used_for_heatmap_avglog2FC_ranking_2024-02-27.csv")
+fgsea.res.combined <- read_csv("figures/current_figure_drafts/fgsea_used_for_heatmap_avglog2FC_ranking_2024-02-27.csv")
+
+
+## Make a GSEA heatmap - all pathways, filtered by pval
+m.gsea <- fgsea.res.combined %>% 
+  group_by(pathway) %>% 
+  filter(sum(padj < 0.1) > 1) %>% arrange(pathway) %>% 
+  filter() %>% 
+  mutate(plot_value = -log10(padj) * sign(NES)) %>% 
+  dplyr::select(pathway, plot_value, cluster) %>% 
+  pivot_wider(names_from = "cluster", values_from = "plot_value") %>% 
+  column_to_rownames("pathway")
+pheatmap::pheatmap(m.gsea, 
+                   cluster_rows = T,
+                   color = colorRampPalette(c("navy", "white", "red"))(20), breaks = seq(-3, 3, length.out = 20))
 
 ## order
 fgsea.pathways = list(
@@ -40,9 +67,6 @@ fgsea.pathways = list(
   `HALLMARK_INTERFERON_GAMMA_RESPONSE` = "Inflammation",
   `KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION` = "Inflammation",
   `REACTOME_CYTOKINE_SIGNALING_IN_IMMUNE_SYSTEM` = "Inflammation",
-  `G2M phase module` = "Differentiation",
-  `GOBP_LEUKOCYTE_DIFFERENTIATION` = "Differentiation",
-  `GOBP_PEPTIDE_BIOSYNTHETIC_PROCESS` = "Differentiation",
   `ATF4 targets (Han et al.)` = "Survival",
   `GOBP_PROTEIN_FOLDING` = "Survival",
   `GOBP_PROTEIN_REFOLDING` = "Survival",
@@ -55,41 +79,68 @@ fgsea.pathways = list(
   `ATF6 module` = "Survival",
   `CHOP targets (Han et al.)` = "Survival",
   `GOBP_REGULATION_OF_IRE1_MEDIATED_UNFOLDED_PROTEIN_RESPONSE` = "Survival",
+  `S phase module` = "Other",
+  `G2M phase module` = "Differentiation",
+  `GOBP_LEUKOCYTE_DIFFERENTIATION` = "Differentiation",
+  `GOBP_PEPTIDE_BIOSYNTHETIC_PROCESS` = "Differentiation",
   `REACTOME_TRANSLATION` = "Survival",
   `HALLMARK_GLYCOLYSIS` = "Other",
   `HALLMARK_MTORC1_SIGNALING` = "Other",
   `HALLMARK_MYC_TARGETS_V1` = "Other",
-  `KEGG_SPLICEOSOME` = "Other",
-  `S phase module` = "Other"
+  `KEGG_SPLICEOSOME` = "Other"
 )
 
-fgsea.pathway.list.formatted <- str_to_title(names(fgsea.pathways)) %>% str_wrap(., width = 25) %>% gsub("_", " ", .)
-
-## Make a GSEA heatmap - pval
-m.gsea <- fgsea.res.combined %>% 
-  group_by(pathway) %>% 
-  filter(sum(padj < 0.2) > 1) %>% arrange(pathway) %>% 
-  filter() %>% 
-  mutate(plot_value = -log10(padj) * sign(NES)) %>% 
-  select(pathway, plot_value, cluster) %>% 
-  pivot_wider(names_from = "cluster", values_from = "plot_value") %>% 
-  column_to_rownames("pathway")
-pheatmap::pheatmap(m.gsea, 
-                   cluster_rows = T,
-                   color = colorRampPalette(c("navy", "white", "red"))(20), breaks = seq(-3, 3, length.out = 20))
+fgsea.pathway.list.formatted <- gsub("_", " ", names(fgsea.pathways)) %>% str_to_title(.) %>% 
+  gsub("Gobp ", "", .) %>% 
+  gsub("Kegg ", "", .) %>% 
+  gsub("Reactome", "", .) %>% 
+  gsub("Hallmark", "", .) %>% 
+  gsub("Atf4", "ATF4", .) %>% 
+  gsub("Ciita", "CIITA", .) %>% 
+  gsub("Et Al.", "et al.", .) %>% 
+  gsub("Mtorc1", "MTORC1", .) %>% 
+  gsub("G2m", "G2M", .) %>% 
+  gsub("Atf6", "ATF6", .) %>% 
+  gsub("Myc", "MYC", .) %>% 
+  gsub("Chop", "CHOP", .) %>% 
+  gsub("Rna", "RNA", .) %>% 
+  gsub("Of Ire1", "of IRE1", .) %>% 
+  gsub("V1", "v1", .) %>% 
+  gsub("Unfolded Protein Response", "UPR", .) %>% 
+  gsub("^ ", "", .)
+  # str_wrap(., width = 25) 
 
 ## Make a GSEA heatmap - picking pathways, color is pval
 m.gsea <- fgsea.res.combined %>% 
   filter(pathway %in% names(fgsea.pathways)) %>% 
   mutate(plot_value = -log10(padj) * sign(NES)) %>% 
-  select(pathway, plot_value, cluster) %>% 
+  dplyr::select(pathway, plot_value, cluster) %>% 
   pivot_wider(names_from = "cluster", values_from = "plot_value") %>% 
   column_to_rownames("pathway")
 rownames(m.gsea) <- plyr::mapvalues(rownames(m.gsea), from = names(fgsea.pathways), to = fgsea.pathway.list.formatted)
-pdf("figures/current_figure_drafts/RNA_GSEA_heatmap_colors_v1.pdf", width = 5.2, height = 5)
+max.val = round(mean(abs(as.matrix(m.gsea))) + 1*sd(abs(as.matrix(m.gsea))))
+min.val <- -1*max.val
+pdf("figures/current_figure_drafts/RNA_GSEA_heatmap_colors_fold_change_20240227.pdf", width = 3.8, height = 5)
 pheatmap::pheatmap(m.gsea[fgsea.pathway.list.formatted, ],
-                   gaps_row = c(5, 8, 20),
+                   gaps_row = c(5, 17),
                    cluster_rows = F,
+                   cluster_cols = F,
+                   # color = colorRampPalette(c("navy", "white", "red"))(20), 
+                   color = colorRampPalette(c("#2A9098", "white", "#F5B935"))(31),
+                   # color = colorRampPalette(c("#FF7B0B", "white", "red"))(20), 
+                   breaks = seq(min.val, max.val, length.out = 31))
+dev.off()
+
+## Make a GSEA heatmap - all pathways, color is pval
+m.gsea <- fgsea.res.combined %>% 
+  mutate(plot_value = -log10(padj) * sign(NES)) %>% 
+  select(pathway, plot_value, cluster) %>% 
+  pivot_wider(names_from = "cluster", values_from = "plot_value") %>% 
+  column_to_rownames("pathway")
+rownames(m.gsea) <- str_to_title(rownames(m.gsea)) %>% gsub("_", " ", .)
+pdf("figures/current_figure_drafts/RNA_GSEA_heatmap_all_pathways.pdf", width = 6.75, height = 15.5)
+pheatmap::pheatmap(m.gsea,
+                   cluster_rows = T,
                    cluster_cols = F,
                    # color = colorRampPalette(c("navy", "white", "red"))(20), 
                    color = colorRampPalette(c("#2A9098", "white", "#F5B935"))(20),
@@ -276,3 +327,17 @@ hsc.fgsea.tf %>% filter(pval < 0.05 & NES < 0) %>% arrange(pval) %>% head(n = 20
 
 hsc.fgsea.all <- run_fgsea_for_list(de.results$HSC, msigdb.list = "ALL", min.size = 20)
 hsc.fgsea.all %>% filter(pval < 0.05 & NES < 0) %>% arrange(pval) %>% head(n = 20)
+
+
+## Make a GSEA heatmap - pval
+m.gsea <- fgsea.res.combined %>% 
+  group_by(pathway) %>% 
+  filter(sum(padj < 0.2) > 1) %>% arrange(pathway) %>% 
+  filter() %>% 
+  mutate(plot_value = -log10(padj) * sign(NES)) %>% 
+  dplyr::select(pathway, plot_value, cluster) %>% 
+  pivot_wider(names_from = "cluster", values_from = "plot_value") %>% 
+  column_to_rownames("pathway")
+pheatmap::pheatmap(m.gsea, 
+                   cluster_rows = T,
+                   color = colorRampPalette(c("navy", "white", "red"))(20), breaks = seq(-3, 3, length.out = 20))

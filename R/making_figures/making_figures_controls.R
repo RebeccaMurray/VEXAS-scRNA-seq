@@ -363,7 +363,7 @@ for (celltype in celltypes){
 
 ############################### Make the DE volcano plot #########################################
 
-de.results <- read_csv("data/differential_expression/VEXAS_vs_control/vexas.vs.control.HSC.DGE.csv") %>% mutate(cluster = "HSC") %>% dplyr::rename(feature = "...1") %>% 
+de.results <- read_csv("data/differential_expression/VEXAS_vs_control/test_vexas.vs.control.HSC.DGE.csv") %>% mutate(cluster = "HSC") %>% dplyr::rename(feature = "...1") %>% 
   mutate(p_val_adj = if_else(p_val_adj < 1e-100, 1e-100, p_val_adj)) ## Capping p-values
 
 # de.results <- read_csv("data/differential_expression/VEXAS_vs_control/vexas.vs.control.CLP.DGE.csv") %>% mutate(cluster = "CLP") %>% dplyr::rename(feature = "...1") %>% 

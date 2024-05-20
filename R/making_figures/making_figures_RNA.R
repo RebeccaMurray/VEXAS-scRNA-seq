@@ -59,6 +59,16 @@ rna.obj@meta.data %>%
   arrange(-frac_genotyped) %>% 
   write_csv("data/metadata/cell_counts_donor_genotype.csv")
 
+## Donor, Sample, genotype
+rna.obj@meta.data %>% 
+  group_by(Donor, Sample, Genotype_Approx_Match_No_Gene_Thresh) %>% 
+  count() %>% 
+  pivot_wider(names_from = Genotype_Approx_Match_No_Gene_Thresh, values_from = n) %>% 
+  mutate(total = sum(MUT, WT, `NA`)) %>% 
+  mutate(frac_genotyped = sum(MUT, WT) / total) %>% 
+  arrange(Donor, -frac_genotyped) %>%
+  write_csv("data/metadata/cell_counts_donor_sample_genotype.csv")
+
 ## Cell type, genotype
 rna.obj@meta.data %>% 
   group_by(CellType, Genotype_Approx_Match_No_Gene_Thresh) %>% 
@@ -892,8 +902,93 @@ plist <- lapply(c("HSPA8", "CAT", "DDIT4", "HLA-DRA"), function(x) {
 p.important.genes <- wrap_plots(plist, ncol = 2) + plot_layout(guides = "collect")
 ggsave(paste0(current.plots.path, "/RNA_important_gene_violins_medians.pdf"), plot = p.important.genes, dpi = 300, device = "pdf", width = 10, height = 7)
 
+############################################## XBP1s - Simple fisher's exact test ###################################
 
+## HSPCs
+md.xbp1 <- rna.obj@meta.data %>% 
+  filter(cluster_celltype %in% c("HSC", "EMP", "LMPP", "MkP")) %>% 
+  filter(Genotype %in% c("MUT", "WT")) %>% 
+  group_by(Genotype) %>% 
+  summarize(sum_unspliced = sum(Unspliced_XBP1, na.rm = T), sum_spliced = sum(Spliced_XBP1, na.rm = T)) %>% 
+  column_to_rownames("Genotype")
+md.xbp1
+md.xbp1 %>% rownames_to_column("Genotype") %>% write_csv("contingency_table_xbp1_hspc.csv")
 
+outcome <- fisher.test(md.xbp1)
+outcome
+df.hspc <- data.frame(cluster = "HSPC", pval = outcome$p.value, odds.ratio = outcome$estimate, conf.int.low = outcome$conf.int[[1]], conf.int.high = outcome$conf.int[[2]])
+df.hspc %>% write_csv("HSPCs_genotype_only_fishers_test_outcome.csv")
+
+## HSCs
+md.xbp1 <- rna.obj@meta.data %>% 
+  filter(cluster_celltype %in% c("HSC")) %>% 
+  filter(Genotype %in% c("MUT", "WT")) %>% 
+  group_by(Genotype) %>% 
+  summarize(sum_unspliced = sum(Unspliced_XBP1, na.rm = T), sum_spliced = sum(Spliced_XBP1, na.rm = T)) %>% 
+  column_to_rownames("Genotype")
+md.xbp1
+md.xbp1 %>%rownames_to_column("Genotype") %>%  write_csv("contingency_table_xbp1_hsc.csv")
+
+outcome <- fisher.test(md.xbp1)
+outcome
+df.hsc <- data.frame(cluster = "HSC", pval = outcome$p.value, odds.ratio = outcome$estimate, conf.int.low = outcome$conf.int[[1]], conf.int.high = outcome$conf.int[[2]])
+df.hsc %>% write_csv("HSCs_genotype_only_fishers_test_outcome.csv")
+
+## Plot HSPCs and HSCs together
+df.combined <- rbind(df.hsc, df.hspc)
+p.odds.ratio <- df.combined %>% 
+  mutate(cluster = factor(cluster, levels = c("HSC", "HSPC"))) %>% 
+  ggplot(aes(x = cluster, y = odds.ratio, fill = cluster)) +
+  geom_col(color = "black") +
+  geom_hline(yintercept = 1, linetype = "longdash") +
+  geom_errorbar(aes(ymin = conf.int.low, ymax = conf.int.high), width=0.2, size = 0.5) +
+  coord_cartesian(ylim = c(0, 1.5)) +
+  annotate("text", x = "HSPC", y = 1.4, label="p < 2.39e-10", size = 3) +
+  annotate("text", x = "HSC", y = 1.4, label=paste0("p = ", round(df.hsc$pval, digits = 2)), size = 3) +
+  scale_fill_manual(values = c(HSC = "#FFCB88", HSPC = "#FF7B0B")) +
+  ggtitle("XBP1 Splicing Ratio", subtitle = "WT vs. MUT cells") +
+  xlab(element_blank()) + 
+  theme(legend.position = 'none') +
+  ylab("Odds ratio,\nFisher's exact test")
+p.odds.ratio
+ggsave("figures/current_figure_drafts/XBP1_fishers_exact_test.pdf", plot = p.odds.ratio, device = "pdf", dpi = 300, width = 2.5, height = 3)
+
+## Run programatically for all hspcs
+fishers.test.progenitors.list <- lapply(c("HSC", "EMP", "LMPP", "MkP"), function(x) {
+  md.xbp1.current <- rna.obj@meta.data %>% 
+    filter(!is.na(Unspliced_XBP1)) %>% 
+    filter(cluster_celltype %in% x) %>% 
+    filter(Genotype %in% c("MUT", "WT")) %>% 
+    group_by(Genotype) %>% 
+    summarize(sum_unspliced = sum(Unspliced_XBP1, na.rm = T), sum_spliced = sum(Spliced_XBP1, na.rm = T)) %>% 
+    column_to_rownames("Genotype")
+  outcome <- fisher.test(md.xbp1.current)
+  return(data.frame(cluster = x, pval = outcome$p.value, odds.ratio = outcome$estimate, conf.int.high = outcome$conf.int[[1]], conf.int.low = outcome$conf.int[[2]]))
+})
+fishers.test.combined <- do.call(rbind, fishers.test.progenitors.list)
+fishers.test.combined
+
+fishers.test.combined %>% 
+  mutate(cluster = factor(cluster, levels = c("HSC", "EMP", "LMPP", "MkP"))) %>% 
+  ggplot(aes(x = cluster, y = odds.ratio)) +
+  geom_col(color = "black", fill = "darkseagreen") +
+  geom_hline(yintercept = 1, linetype = "longdash") +
+  geom_errorbar(aes(ymin = conf.int.low, ymax = conf.int.high), width=0.2, size = 0.5) +
+  coord_cartesian(ylim = c(0, 2.2)) +
+  geom_text(aes(label = scales::scientific(pval, digits = 3)), y = 2) +
+  ggtitle("XBP1 Splicing Ratio", subtitle = "WT vs. MUT cells") +
+  xlab(element_blank()) + 
+  theme(legend.position = 'none') +
+  ylab("Odds ratio,\nFisher's exact test")
+
+## Save as a csv
+rna.obj@meta.data %>% 
+  filter(cluster_celltype %in% c("HSC", "EMP", "LMPP", "MkP")) %>% 
+  filter(Genotype %in% c("MUT", "WT")) %>% 
+  group_by(cluster_celltype, Donor, Genotype) %>% 
+  summarize(`Cell count` = n(), `XBP1u UMI count` = sum(Unspliced_XBP1, na.rm = T), `XBP1s UMI count` = sum(Spliced_XBP1, na.rm = T)) %>% 
+  write_csv("xbp1_values.csv")
+  # column_to_rownames("Genotype")
 
 ############################################## XBP1s - sample-aware permutation test (kallisto, HSPC) ###################################
 
@@ -1592,10 +1687,71 @@ nrow(md)
 nrow(md.cb.sniffer)
 md.cb.sniffer %>% count(Genotype, cb_sniffer_genotype)
 
-## HSC counts - all cells
-md.cb.sniffer %>% filter(CellType == "HSC") %>% count(cb_sniffer_genotype)
-md.cb.sniffer %>% filter(CellType == "HSC") %>% count(Genotype)
 
+### Validating genotyping counts
+print("GoT, all samples:")
+rna.obj@meta.data %>% count(is_genotyped = Genotype != "NA")
+
+print("GoT, CD34+ only")
+rna.obj@meta.data %>% 
+  filter(orig.ident %in% c("SG_VX_BM15a_GEX", "SG_VX_BM15b_GEX", "UPN14_CD34", "UPN15_CD34", "UPN16_CD34", "UPN17_CD34", "VEXAS_BM1_CD34_plus_SR", "VEXAS_c_BM2_CD34_plus_SR", "VX_BM14_Fpos_GEX")) %>% 
+  count(is_genotyped =Genotype != 'NA')
+
+print("cb_sniffer, Wu et al. samples")
+md.cb.sniffer %>% 
+  filter(Donor %in% c("PT07", "PT08", "PT09", "PT10")) %>% 
+  group_by(Donor) %>% 
+  summarize(cb_sniffer_frac = sum(!is.na(cb_sniffer_genotype))/n())
+
+print("GoT, Wu et al. samples")
+md.cb.sniffer %>% 
+  filter(Donor %in% c("PT07", "PT08", "PT09", "PT10")) %>% 
+  group_by(Donor) %>% 
+  summarize(GoT_frac = sum(Genotype != 'NA')/n())
+
+print("cb_sniffer, Wu et al. CD34+ samples")
+md.cb.sniffer %>% 
+  filter(Sample %in% c("PT07_CD34_positive", "PT08_CD34_positive", "PT09_CD34_positive", "PT10_CD34_positive")) %>% 
+  group_by(Donor) %>% 
+  summarize(cb_sniffer_frac = sum(!is.na(cb_sniffer_genotype))/n())
+
+print("GoT, Wu et al. CD34+ samples")
+md.cb.sniffer %>% 
+  filter(Sample %in% c("PT07_CD34_positive", "PT08_CD34_positive", "PT09_CD34_positive", "PT10_CD34_positive")) %>% 
+  group_by(Donor) %>% 
+  summarize(GoT_frac = sum(Genotype != 'NA')/n())
+
+print("cb_sniffer HSCs captured, Wu et al. samples")
+md.cb.sniffer %>% 
+  filter(Donor %in% c("PT07", "PT08", "PT09", "PT10")) %>% 
+  filter(CellType == "HSC") %>% 
+  summarize(total = n(), cb_sniffer_total = sum(!is.na(cb_sniffer_genotype)))
+
+print("cb_sniffer HSCs captured with genotype call, Wu et al. samples")
+md.cb.sniffer %>% 
+  filter(Donor %in% c("PT07", "PT08", "PT09", "PT10")) %>% 
+  filter(CellType == "HSC") %>% 
+  count(cb_sniffer_genotype)
+
+print("GoT HSCs captured, Wu et al. samples")
+md.cb.sniffer %>% 
+  filter(Donor %in% c("PT07", "PT08", "PT09", "PT10")) %>% 
+  filter(CellType == "HSC") %>% 
+  summarize(total = n(), GoT_total = sum(Genotype != 'NA'))
+
+print("GoT HSCs captured, all samples")
+md.cb.sniffer %>% 
+  filter(CellType == "HSC") %>% 
+  summarize(total = n(), GoT_total = sum(Genotype != 'NA'))
+
+print("GoT HSCs captured by donor, all samples")
+md.cb.sniffer %>% 
+  filter(CellType == "HSC") %>% 
+  group_by(Donor) %>% 
+  summarize(total = n(), GoT_frac = sum(Genotype != 'NA')/n()) %>% arrange(-GoT_frac)
+
+
+### Previous work
 ## HSC counts - Wu et al.
 md.cb.sniffer %>% filter(Donor %in% c("PT07", "PT08", "PT09", "PT10")) %>% 
   filter(CellType == "HSC") %>% count(cb_sniffer_genotype)
@@ -1605,7 +1761,8 @@ md.cb.sniffer %>% filter(Donor %in% c("PT07", "PT08", "PT09", "PT10")) %>%
 md.cb.sniffer %>% filter(Donor %in% c("PT07", "PT08", "PT09", "PT10")) %>% 
   filter(CellType == "HSC") %>% mutate(GoT_genotype = Genotype) %>% count(GoT_genotype, cb_sniffer_genotype)
 
-
+md.cb.sniffer %>% filter(Donor %in% c("PT07", "PT08", "PT09", "PT10")) %>% 
+  group_by(Donor) %>% summarize(cb_sniffer_frac = sum(!is.na(cb_sniffer_genotype))/n())
 
 ## Look at genotyping differences - grouping by patient
 md.cb.sniffer.summarized.patient <- md.cb.sniffer %>% 
@@ -1637,8 +1794,6 @@ md.cb.sniffer %>%
   group_by(Donor) %>% 
   count(Donor, Genotype)
 
-
-
 ## Save as a csv for supplementary - grouping by patient
 md.cb.sniffer.summarized.patient %>% 
   mutate(`Sample Source` = if_else(Donor %in% c("PT07", "PT08", "PT09", "PT10"), "Wu et al.", "Current study only")) %>% 
@@ -1651,8 +1806,9 @@ md.cb.sniffer.summarized.patient %>%
 ## Look at genotyping differences - grouping by sample
 md.cb.sniffer %>% count(has_cbsniffer_output, has_GoT_output)
 md.cb.sniffer.summarized.sample <- md.cb.sniffer %>% 
-  group_by(Sample, orig.ident) %>% 
-  summarize(fraction_genotyped_cbsniffer = sum(has_cbsniffer_output) / n(), fraction_genotyped_GoT = sum(has_GoT_output) / n())
+  group_by(Donor, Sample, orig.ident) %>% 
+  summarize(fraction_genotyped_cbsniffer = sum(has_cbsniffer_output) / n(), fraction_genotyped_GoT = sum(has_GoT_output) / n(), count = n()) %>% 
+  mutate(`Genotyping config used` = plyr::mapvalues(Donor, from = names(cb_sniffer_config_list), to = cb_sniffer_config_list))
 md.cb.sniffer.summarized.sample %>% arrange(-fraction_genotyped_cbsniffer)
 
 ## Save as a csv for supplementary - grouping by sample

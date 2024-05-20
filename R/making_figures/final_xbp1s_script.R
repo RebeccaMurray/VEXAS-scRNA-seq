@@ -119,8 +119,8 @@ actual.df <- data.frame(values = actual_diff_results)
 ## Save the output data frames
 saveRDS(scrambled.df, file = "data/xbp1_splicing_scrambled_df_HSPC.rds")
 saveRDS(actual.df, file = "data/xbp1_splicing_actual_df_HSPC.rds")
-# scrambled.df <- readRDS("data/xbp1_splicing_scrambled_df_HSPC.rds")
-# actual.df <- readRDS("data/xbp1_splicing_actual_df_HSPC.rds")
+scrambled.df <- readRDS("data/xbp1_splicing_scrambled_df_HSPC.rds")
+actual.df <- readRDS("data/xbp1_splicing_actual_df_HSPC.rds")
 
 ## Calculate the actual mean difference
 observed.ratio.diff <- calculate_difference_of_ratios(md.xbp1)
@@ -163,7 +163,46 @@ p.xbp1.boxplot.lines <- md.xbp1 %>%
 p.xbp1.boxplot.lines
 ggsave("figures/current_figure_drafts/RNA_xbp1s_boxplots_dots_overlaid_HSPC_20240506.pdf", plot = p.xbp1.boxplot.lines, device = "pdf", dpi = 300, width = 1.5, height = 2.5)
 
+## Plot bar plot with distribution of splicing ratios for donors used in the analysis
+splicing.ratios.summarized <- md.xbp1 %>% 
+  group_by(Genotype, Donor) %>% 
+  summarize(spliced_sum = sum(Spliced_XBP1, na.rm = T), unspliced_sum = sum(Unspliced_XBP1, na.rm = T), cell_count = n()) %>% 
+  mutate(splicing_ratio = log2(spliced_sum/unspliced_sum))
+t_shift <- scales::trans_new("shift",
+                             transform = function(x) {x+6},
+                             inverse = function(x) {x-6})
+p.column_plot <- md.xbp1 %>% 
+  group_by(Genotype, Donor) %>% 
+  summarize(spliced_sum = sum(Spliced_XBP1, na.rm = T), unspliced_sum = sum(Unspliced_XBP1, na.rm = T), cell_count = n()) %>% 
+  mutate(splicing_ratio = log2(spliced_sum/unspliced_sum)) %>% 
+  summarize(mean_splicing_ratio = mean(splicing_ratio),
+            sd = sd(splicing_ratio),
+            n = n(),
+            se = sd / sqrt(n)) %>% 
+  ggplot(aes(x = Genotype, y = mean_splicing_ratio, fill = Genotype)) +
+  geom_col(color = "black", size = 0.25) +
+  geom_errorbar(aes(ymin = mean_splicing_ratio-se, ymax = mean_splicing_ratio+se), width=0.4, size = 0.25) +
+  geom_jitter(data = splicing.ratios.summarized, mapping = aes(x = Genotype, y = splicing_ratio), width = 0.25) +
+  scale_fill_manual(values = c(WT = "#FFCB88", MUT = "#FF7B0B")) +
+  scale_y_continuous(trans = t_shift, 
+                     limits = c(-6, 0),
+                     breaks = c(-6, -4, -2, 0)) +
+  ylab("XBP1s/XBP1u") +
+  theme(legend.position = "none") +
+  ggtitle("XBP1s/XBP1u", subtitle = paste0("HSPCs\nn = ", length(donors.keep), " donors")) +
+  annotate("text", x = 1.2, y = -0.5, label=paste0("p = ", p.value), size = 3)
+p.column_plot
+ggsave("figures/current_figure_drafts/RNA_xbp1s_bar_plot_dots_overlaid_HSPC_20240506.pdf", plot = p.column_plot, device = "pdf", dpi = 300, width = 1.5, height = 2.5)
 
+
+## Saving dots to a csv
+md.xbp1 %>% 
+  group_by(Genotype, Donor) %>% 
+  summarize(spliced_sum = sum(Spliced_XBP1, na.rm = T), unspliced_sum = sum(Unspliced_XBP1, na.rm = T), cell_count = n()) %>% 
+  mutate(splicing_ratio = spliced_sum/unspliced_sum) %>% 
+  select(Donor, Genotype, splicing_ratio) %>% 
+  pivot_wider(names_from = Genotype, values_from = splicing_ratio) %>% 
+  write_csv("data/xbp1s_pseudobulked_values_HSPCs_without_log_transform_2024-05-06.csv")
 
 ############################################## XBP1s - sample-aware permutation test (kallisto, HSC) ###################################
 
@@ -244,18 +283,20 @@ scrambled.df <- data.frame(values = scrambled_diff_results)
 actual.df <- data.frame(values = actual_diff_results)
 
 # ## Save the output data frames
-# saveRDS(scrambled.df, file = "data/xbp1_splicing_scrambled_df_HSC.rds")
-# saveRDS(actual.df, file = "data/xbp1_splicing_actual_df_HSC.rds")
+saveRDS(scrambled.df, file = "data/xbp1_splicing_scrambled_df_HSC.rds")
+saveRDS(actual.df, file = "data/xbp1_splicing_actual_df_HSC.rds")
+scrambled.df <- readRDS("data/xbp1_splicing_scrambled_df_HSC.rds")
+actual.df <- readRDS("data/xbp1_splicing_actual_df_HSC.rds")
 
 ## Calculate the actual mean difference
 observed.ratio.diff <- calculate_difference_of_ratios(md.xbp1)
-observed.ratio.diff.downsampled.mean <- mean(actual_diff_results)
+observed.ratio.diff.downsampled.mean <- mean(actual.df$value)
 
 print(observed.ratio.diff)
 print(observed.ratio.diff.downsampled.mean)
 
 ## Calculate the fraction of simulated results that are above the observed value
-p.value <- sum(scrambled_diff_results > observed.ratio.diff.downsampled.mean) / length(scrambled_diff_results)
+p.value <- sum(scrambled.df$values > observed.ratio.diff.downsampled.mean) / length(scrambled.df$values)
 print(p.value)
 
 ## Plot histogram of all iterations
@@ -287,3 +328,45 @@ p.xbp1.boxplot.lines <- md.xbp1 %>%
   annotate("text", x = 1.2, y = 0.07, label=paste0("p = ", p.value), size = 3)
 p.xbp1.boxplot.lines
 ggsave("figures/current_figure_drafts/RNA_xbp1s_boxplots_dots_overlaid_HSC_20240506.pdf", plot = p.xbp1.boxplot.lines, device = "pdf", dpi = 300, width = 1.5, height = 2.5)
+
+## Plot bar plot with distribution of splicing ratios for donors used in the analysis
+splicing.ratios.summarized <- md.xbp1 %>% 
+  group_by(Genotype, Donor) %>% 
+  summarize(spliced_sum = sum(Spliced_XBP1, na.rm = T), unspliced_sum = sum(Unspliced_XBP1, na.rm = T), cell_count = n()) %>% 
+  mutate(splicing_ratio = log2(spliced_sum/unspliced_sum))
+t_shift <- scales::trans_new("shift",
+                             transform = function(x) {x+6},
+                             inverse = function(x) {x-6})
+p.column_plot <- md.xbp1 %>% 
+  group_by(Genotype, Donor) %>% 
+  summarize(spliced_sum = sum(Spliced_XBP1, na.rm = T), unspliced_sum = sum(Unspliced_XBP1, na.rm = T), cell_count = n()) %>% 
+  mutate(splicing_ratio = log2(spliced_sum/unspliced_sum)) %>% 
+  summarize(mean_splicing_ratio = mean(splicing_ratio),
+            sd = sd(splicing_ratio),
+            n = n(),
+            se = sd / sqrt(n)) %>% 
+  ggplot(aes(x = Genotype, y = mean_splicing_ratio, fill = Genotype)) +
+  geom_col(color = "black", size = 0.25) +
+  geom_errorbar(aes(ymin = mean_splicing_ratio-se, ymax = mean_splicing_ratio+se), width=0.4, size = 0.25) +
+  geom_jitter(data = splicing.ratios.summarized, mapping = aes(x = Genotype, y = splicing_ratio), width = 0.25) +
+  scale_fill_manual(values = c(WT = "#FFCB88", MUT = "#FF7B0B")) +
+  scale_y_continuous(trans = t_shift, 
+                     limits = c(-6, 0),
+                     breaks = c(-6, -4, -2, 0)) +
+  ylab("XBP1s/XBP1u") +
+  theme(legend.position = "none") +
+  ggtitle("XBP1s/XBP1u", subtitle = paste0("HSCs\nn = ", length(donors.keep), " donors")) +
+  annotate("text", x = 1.2, y = -0.5, label=paste0("p = ", p.value), size = 3)
+p.column_plot
+ggsave("figures/current_figure_drafts/RNA_xbp1s_bar_plot_dots_overlaid_HSC_20240506.pdf", plot = p.column_plot, device = "pdf", dpi = 300, width = 1.5, height = 2.5)
+
+
+## Saving dots to a csv
+md.xbp1 %>% 
+  group_by(Genotype, Donor) %>% 
+  summarize(spliced_sum = sum(Spliced_XBP1, na.rm = T), unspliced_sum = sum(Unspliced_XBP1, na.rm = T), cell_count = n()) %>% 
+  mutate(splicing_ratio = spliced_sum/unspliced_sum) %>% 
+  select(Donor, Genotype, splicing_ratio) %>% 
+  pivot_wider(names_from = Genotype, values_from = splicing_ratio) %>% 
+  write_csv("data/xbp1s_pseudobulked_values_HSCs_without_log_transform_2024-05-06.csv")
+

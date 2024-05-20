@@ -1,0 +1,116 @@
+---
+title: "Genotyping metrics - UBA1 GoT"
+output: html_notebook
+---
+
+Load and format the seurat object
+```{r}
+library(Seurat)
+library(ggh4x)
+library(tidyverse)
+library(gridExtra)
+library(ggrepel)
+library(patchwork)
+library(ggsci)
+library(ggpubr)
+library(viridis)
+library(pheatmap)
+theme_set(theme_classic())
+set.seed(1)
+
+rna.obj <- readRDS("~/rscripts/VEXAS_RNA_seurat/data/seurat_objects/vexas_final_RNA_data_celltypes_umap_updated_20231218.rds")
+
+## Set an order for the cluster annotations
+celltype.order <- c("HSC", "LMPP", "EMP", "Early Eryth", "Late Eryth", "MkP", "BaEoMa", "CLP", "GMP", "cDC", "CD14 Mono", "B", "pDC", "CD4 T", "CD8 T", "NK", "Plasma")
+rna.obj$CellType <- factor(rna.obj$cluster_celltype, levels = celltype.order)
+table(rna.obj$CellType, useNA = "always")
+
+## Formatting the sample and donor columns
+meta.data.mapping <- read_csv("data/formatting_patient_ids/orig_ident_to_study_id_mapping_manually_updated_2024-03-29.csv")
+rna.obj$Sample <- plyr::mapvalues(rna.obj$orig.ident, from = meta.data.mapping$orig.ident, to = meta.data.mapping$updated_name)
+rna.obj$Sample <- factor(rna.obj$Sample, levels = meta.data.mapping$updated_name %>% sort())
+rna.obj@meta.data %>% count(orig.ident, Sample)
+rna.obj$Donor <- gsub("_BMMC|_CD34.*", "", rna.obj$Sample) %>% gsub("_[A|B]", "", .)
+rna.obj$Donor <- factor(rna.obj$Donor, levels = unique(rna.obj$Donor) %>% sort())
+rna.obj@meta.data %>% count(orig.ident, Sample, Donor)
+
+## Get metadata plot with coordinates
+md <- rna.obj[[]]
+coords <- Embeddings(rna.obj[["umap"]])
+md <- cbind(md, coords) %>% dplyr::rename(`UMAP1` = umap_1) %>% dplyr::rename(`UMAP2` = umap_2)
+md <- md[sample(1:nrow(md)), ] ## Shuffle the rows in the dataframe, so plotting order is random
+
+```
+
+
+
+Load the cb_sniffer results and merge with the seurat metadata
+```{r}
+## There may be differences in the percents used here and those used in the PPT made previously because
+## the PPT was using all cellranger-identified cells and here we are using only cells in our final QC-filtered
+## seurat object
+
+## Sample name mapping
+NIH_mapping_list <- c(
+  UPN14_BMMC = "GSM5858683",
+  UPN15_BMMC = "GSM5858684",
+  UPN16_BMMC = "GSM5858685",
+  UPN17_BMMC = "GSM5858686",
+  UPN14_CD34 = "GSM5858670",
+  UPN15_CD34 = "GSM5858671",
+  UPN16_CD34 = "GSM5858672",
+  UPN17_CD34 = "GSM5858673"
+)
+
+## cb_sniffer config mapping
+cb_sniffer_config_list <- c(
+  PT01 = "c.121A>C",
+  PT02 = "c.122T>C",
+  PT03 = "c.122T>C",
+  PT04 = "c.121A>G",
+  PT05 = "c.122T>C",
+  PT06 = "c.122T>C",
+  PT07 = "c.121A>C",
+  PT08 = "c.121A>C",
+  PT09 = "c.122T>C",
+  PT10 = "c.122T>C"
+)
+
+## Load a list of every barcode with a cb_sniffer output
+cb.sniff.df.list <- lapply(unique(rna.obj$orig.ident), function(x) {
+  cb.sniffer.file <- x
+  if (x %in% names(NIH_mapping_list)) {
+    cb.sniffer.file <- NIH_mapping_list[[x]]
+  }
+  # cb.sniff.barcodes <- read_tsv(paste0("/gpfs/commons/home/rmurray/VEXAS/cb_sniffer/output/", cb.sniffer.file, "/", cb.sniffer.file, "_counts_CB.tsv")) %>% pull(barcode) %>% paste0(x, "_", .)
+  cb.sniff.df <- read_tsv(paste0("/gpfs/commons/home/rmurray/VEXAS/cb_sniffer/output/", cb.sniffer.file, "/", cb.sniffer.file, "_counts_CB.tsv")) %>% 
+    mutate(barcode = paste0(x, "_", barcode)) %>% 
+    mutate(cb_sniffer_genotype = if_else(alt_count > 0, "MUT", if_else(ref_count > 0, "WT", "Unknown"))) %>% 
+    transmute(barcode = barcode, ref_count_cbsniff = ref_count, alt_count_cbsniff = alt_count, cb_sniffer_genotype = cb_sniffer_genotype)
+  return(cb.sniff.df)
+})
+cb.sniff.df <- do.call(rbind, cb.sniff.df.list)
+
+## Add cb.sniffer output to metadata
+md.cb.sniffer <- md %>% 
+  rownames_to_column("barcode") %>% 
+  merge(., cb.sniff.df, by = "barcode", all.x = T, all.y = F) %>% ## cb_sniffer is run on the cellranger output bams, will have some extra cells we QC-filter out
+  mutate(has_GoT_output = Genotype %in% c("MUT", "WT")) %>% 
+  mutate(has_cbsniffer_output = cb_sniffer_genotype %in% c("MUT", "WT"))
+
+## Make sure we kept all the cells
+nrow(md)
+nrow(md.cb.sniffer)
+md.cb.sniffer %>% count(Genotype, cb_sniffer_genotype)
+
+```
+
+Count number of genotyped cells
+```{r}
+print("All samples:")
+rna.obj@meta.data %>% count(is_genotyped = Genotype != "NA")
+print("CD34+ only")
+rna.obj@meta.data %>% filter(orig.ident %in% c("SG_VX_BM15a_GEX", "SG_VX_BM15b_GEX", "UPN14_CD34", "UPN15_CD34", "UPN16_CD34", "UPN17_CD34", "VEXAS_BM1_CD34_plus_SR", "VEXAS_c_BM2_CD34_plus_SR", "VX_BM14_Fpos_GEX")) %>% count(is_genotyped =Genotype != 'NA')
+
+```
+
