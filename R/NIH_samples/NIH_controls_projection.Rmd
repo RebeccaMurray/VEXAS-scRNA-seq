@@ -1,0 +1,175 @@
+```{r}
+library(Seurat)
+library(sctransform)
+library(Seurat)
+library("dplyr")
+library("ggplot2")
+library("viridis")
+library("tibble")
+library("gridExtra")
+library("stringr")
+library(readr)
+library(ggpmisc)
+library(ggrepel)
+library(data.table)
+library(patchwork)
+library(sleuthALR)
+library(ggpubr)
+library(rstatix)
+library("scater")
+library(stats)
+library(ggh4x)
+library(EnhancedVolcano)
+gc()
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+```
+
+```{r}
+vexas=readRDS('/gpfs/commons/home/rmurray/rscripts/VEXAS_RNA_seurat/data/seurat_objects/vexas_only_sscore_g2mscore_mito_regressed_doublets_filtered_NormalizeData_scaled.rds')
+DefaultAssay(vexas)<-"RNA"
+vexas=FindVariableFeatures(vexas, nfeatures = 3000)
+
+vexasColors <-
+  setNames(scales::hue_pal()(17)
+            , levels(vexas$CellType)  )
+
+vexas$Object='Vexas'
+```
+
+
+```{r}
+# CREATE NIH_CONTROLS OBJECTS
+HD1 <- CreateSeuratObject(counts = Read10X(data.dir = "/gpfs/commons/groups/landau_lab/VEXAS/fastqs/NIH_data/CONTROLS/NIH_DATA_HD1/outs/filtered_feature_bc_matrix/"), project = "HD1")
+HD2 <- CreateSeuratObject(counts = Read10X(data.dir = "/gpfs/commons/groups/landau_lab/VEXAS/fastqs/NIH_data/CONTROLS/NIH_DATA_HD2/outs/filtered_feature_bc_matrix/"), project = "HD2")
+HD3 <- CreateSeuratObject(counts = Read10X(data.dir = "/gpfs/commons/groups/landau_lab/VEXAS/fastqs/NIH_data/CONTROLS/NIH_DATA_HD3/outs/filtered_feature_bc_matrix/"), project = "HD3")
+HD4 <- CreateSeuratObject(counts = Read10X(data.dir = "/gpfs/commons/groups/landau_lab/VEXAS/fastqs/NIH_data/CONTROLS/NIH_DATA_HD4/outs/filtered_feature_bc_matrix/"), project = "HD4")  
+
+
+sample.list <- lapply(list(HD1,HD2,HD3,HD4), function(x) {
+  
+  print(x)
+  
+  # CREATE NIH_CONTROLS OBJECTS
+  id = as.vector(unique(x$orig.ident))
+  
+  # QC NIH_CONTROLS OBJECTS
+  x$percent.mito <- PercentageFeatureSet(x, pattern = "^MT-")
+  x = subset(x, subset=percent.mito<10)
+  x=subset(x, subset=nFeature_RNA>500 & nFeature_RNA<3000)
+  VlnPlot(x, features = c('nCount_RNA','nFeature_RNA','percent.mito'), pt.size = 0.01)
+  
+  
+  # PRE-PROCESS NIH_CONTROLS
+  DefaultAssay(x) <- "RNA"
+  x <- NormalizeData(x)
+  x <- CellCycleScoring(x, s.features = s.genes, g2m.features = g2m.genes, set.ident = F)
+  x$CC.Difference <- x$S.Score - x$G2M.Score
+  #x <- SCTransform(x, vst.flavor = "v2", vars.to.regress = c("percent.mito", "CC.Difference"))
+  x <- FindVariableFeatures(x, nfeatures=2000)
+  x <- ScaleData(x, vars.to.regress = c("percent.mito", "CC.Difference"))
+  x <- RunPCA(x, npcs = 30)
+
+
+  gc()
+  
+  # PROJECTION
+  anchors <- FindTransferAnchors(reference = vexas, reference.assay = 'integrated', query = x,
+      dims = 1:30, reference.reduction = "pca", normalization.method = 'LogNormalize', query.assay = 'RNA')
+  
+  predictions <- TransferData(reference = vexas, query = x, anchorset = anchors, refdata = vexas$CellType,
+      dims = 1:30)
+  
+  x <- MapQuery(anchorset = anchors, reference = vexas, query = x,
+      refdata = list(celltype = "CellType"), reference.reduction = "pca", reduction.model = "umap")
+  
+
+  gc()
+  # MERGE DATASETS
+  
+  x$Object='CONTROL'
+  
+  merged = merge(vexas, x)
+  
+  merged@reductions[["umap"]]=vexas@reductions[["umap"]]
+  
+  merged@reductions[["umap"]]@cell.embeddings = rbind(vexas@reductions[["umap"]]@cell.embeddings,x@reductions[["ref.umap"]]@cell.embeddings)
+  
+  vexas=merged
+  
+  rm(merged)
+  
+  vexas$AllCellType = ifelse(is.na(vexas$CellType),vexas$predicted.celltype, vexas$CellType)
+  
+  saveRDS(x, file=paste0(id,'_processed.Rds'))
+  
+  gc()
+  
+  return(x)
+})
+
+
+saveRDS(vexas, file = 'vexas.ctrl.integrated.Rds')
+
+```
+
+```{r}
+saveRDS(HD1,'HD1_processed.Rds')
+saveRDS(HD2,'HD2_processed.Rds')
+saveRDS(HD3,'HD3__processed.Rds')
+saveRDS(HD4,'HD4_processed.Rds')
+
+
+# MERGE DATASETS
+HD1=sample.list[[1]]
+HD2=sample.list[[2]]
+HD3=sample.list[[3]]
+HD4=sample.list[[4]]
+
+gc()
+
+HD1=RenameCells(HD1, add.cell.id = 'HD1')
+HD2=RenameCells(HD2, add.cell.id = 'HD2')
+HD3=RenameCells(HD3, add.cell.id = 'HD3')
+HD4=RenameCells(HD4, add.cell.id = 'HD4')
+
+merged = merge(vexas, c(HD1,HD2,HD3,HD4))
+
+table(merged$Object)  
+
+umap_df=rbind(vexas@reductions[["umap"]]@cell.embeddings,HD1@reductions[["ref.umap"]]@cell.embeddings,HD2@reductions[["ref.umap"]]@cell.embeddings,HD3@reductions[["ref.umap"]]@cell.embeddings,HD4@reductions[["ref.umap"]]@cell.embeddings)
+
+merged[["umap"]] <- SeuratObject::CreateDimReducObject(umap_df, assay="RNA")
+
+merged$AllCellType = ifelse(is.na(merged$CellType),merged$predicted.celltype, merged$CellType)
+  
+
+p1=DimPlot(merged, group.by = 'AllCellType',label = T, label.box = T)+NoLegend()+ggtitle('VEXAS + NIH-CONTROLS')
+p2=DimPlot(merged, group.by = 'Object',label = T, label.box = T)+NoLegend()+ggtitle('VEXAS + NIH-CONTROLS')
+p3=DimPlot(merged, group.by = 'orig.ident',label = T, label.box = T)+NoLegend()+ggtitle('VEXAS + NIH-CONTROLS')
+
+p1+p2
+ggsave('vexas.ctrl.integrated.Object.pdf',width=15,height=10)
+
+p1+p3
+ggsave('vexas.ctrl.integrated.Ident.pdf',width=15,height=10)
+
+
+saveRDS(merged, file='vexas.ctrl.integrated.Rds')
+  
+gc()
+  
+
+
+```
+
+```{r}
+vexas=merged
+```
+
+```{r}
+DimPlot(merged, group.by = 'AllCellType')
+```
+
