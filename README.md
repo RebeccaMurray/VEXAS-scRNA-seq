@@ -1,6 +1,7 @@
 # VEXAS-scRNA-seq
 scRNA-seq analysis scripts to accompany the Landau Lab's recent preprint, "Single-cell genotype-phenotype mapping identifies therapeutic vulnerabilities in VEXAS syndrome".
 Read the preprint here: https://doi.org/10.1101/2024.05.19.594376
+Scripts from here and from https://github.com/RebeccaMurray/VEXAS-scATAC-seq can be used to reproduce the figures from the manuscript.
 
 # Installation and setup
 Source code can be downloaded using the following commands:
@@ -11,7 +12,7 @@ git clone https://github.com/RebeccaMurray/VEXAS-scATAC-seq.git
 Raw sequencing data can be downloaded from the EGA (deposit info to come). Sequencing data can be processed with [Cell Ranger](https://www.10xgenomics.com/support/software/cell-ranger/latest) and [Cell Ranger ATAC](https://www.10xgenomics.com/support/single-cell-atac) via the "count" commands. (For scRNA-seq data, the 5' mode was used). 
 The cellranger outputs for both data sets can then be used as input to the source code above.
 
-Downloading the source code should take seconds on a standard computer. The analysis scripts vary in time to run, with the most computationally intesive being the sample preprocessing and integration scripts (https://github.com/RebeccaMurray/VEXAS-scRNA-seq/blob/main/R/sample_integration/integrating_samples_SCTransform_soupx_pca_50.R) for the scRNA-seq data and (https://github.com/RebeccaMurray/VEXAS-scATAC-seq/blob/main/R/sample_integration/integrating_samples.R) for the scATAC-seq paper. Both scripts took several hours using 150G of memory and 20 cores.
+Downloading the source code should take seconds on a standard computer. The analysis scripts vary in time to run, with the most computationally intesive being the sample preprocessing and integration scripts [integrating_samples_SCTransform_soupx_pca_50.R](https://github.com/RebeccaMurray/VEXAS-scRNA-seq/blob/main/R/sample_integration/integrating_samples_SCTransform_soupx_pca_50.R) for the scRNA-seq data and [integrating_samples.R](https://github.com/RebeccaMurray/VEXAS-scATAC-seq/blob/main/R/sample_integration/integrating_samples.R) for the scATAC-seq paper. Both scripts took several hours using 150G of memory and 20 cores.
 
 ## Genotyping data
 Genotyping data can be processed using the previously published [Genotyping of Transcriptomes](https://github.com/dan-landau/IronThrone-GoT) and [Genotyping of Targeted Loci with Chromatin Accessibility](https://github.com/landau-lab/Gotcha) pipelines.
